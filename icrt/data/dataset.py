@@ -1,4 +1,4 @@
-import os 
+import os
 import json
 import h5py
 import torch
@@ -10,13 +10,13 @@ from icrt.util.args import DatasetConfig, SharedConfig
 from collections import defaultdict
 
 class SequenceDataset(torch.utils.data.Dataset):
-    
+
     # set minimum trajectory length
     # we use 30 as the control frequency of the robot is 15 Hz
-    minimum_length : int = 30 
+    minimum_length : int = 30
     maximum_length : int = 450
 
-    # remove long tail situations 
+    # remove long tail situations
     min_demos : int = 4
 
     def __init__(
@@ -27,8 +27,8 @@ class SequenceDataset(torch.utils.data.Dataset):
         no_aug_vision_transform : transforms.Compose = None, # this is for wrist camera in particular
         split : str = "train",
         split_file : str = None, # path to the train val split file (json)
-    ): 
-        # parse the dataset config 
+    ):
+        # parse the dataset config
         dataset_json = load_json(dataset_config.dataset_json)
 
         # dataset_path: List of hdf5 paths
@@ -36,13 +36,13 @@ class SequenceDataset(torch.utils.data.Dataset):
 
         # hdf5_keys: List of hdf5 keys jsons (reading from hdf5 is slow, so we cached them)
         hdf5_keys = dataset_json["hdf5_keys"]
-        
-        # assert the number of dataset_path and hdf5_keys are the same 
+
+        # assert the number of dataset_path and hdf5_keys are the same
         assert len(dataset_path) == len(hdf5_keys), "Number of dataset paths and hdf5 keys must match"
 
         # create handles for the hdf5 files
         hdf5_files = [h5py.File(h5_path, 'r') for h5_path in dataset_path]
-        
+
         # load the hdf5_keys: list of keys for each hdf5 file
         self.hdf5_keys = [load_json(f) for f in hdf5_keys]
 
@@ -70,7 +70,7 @@ class SequenceDataset(torch.utils.data.Dataset):
         for epi_len_mapping_json in epi_len_mapping_jsons:
             self.epi_len_mapping_json.update(load_json(epi_len_mapping_json))
 
-        # filter episodes by their length 
+        # filter episodes by their length
         self.hdf5_keys = [
             key for key in self.hdf5_keys if self.minimum_length <= self.epi_len_mapping_json[key] <= self.maximum_length
         ]
@@ -88,7 +88,7 @@ class SequenceDataset(torch.utils.data.Dataset):
                 self.verb_to_episode[k].extend(v)
 
         # confine training to only a subset of tasks
-        if dataset_config.task_names: 
+        if dataset_config.task_names:
             # first check if the task names are valid
             for task in dataset_config.task_names:
                 assert task in self.verb_to_episode, f"Task {task} not found in the dataset"
@@ -104,15 +104,15 @@ class SequenceDataset(torch.utils.data.Dataset):
 
         if dataset_config.dataset_fraction < 1.0:
             print("Using only a fraction of the dataset: ", dataset_config.dataset_fraction)
-            if not dataset_config.sort_by_lang: 
+            if not dataset_config.sort_by_lang:
                 # if sort_by_lang, process the dataset_fraction by task
                 num_demos = int(len(self.hdf5_keys) * dataset_config.dataset_fraction)
                 self.hdf5_keys = self.hdf5_keys[:num_demos]
 
-        # define train test split 
+        # define train test split
         self.split = split
         self.train_split = dataset_json["train_split"]
-        
+
         # set seed and shuffle the hdf5 keys
         rng = np.random.RandomState(seed=shared_config.seed)
         rng.shuffle(self.hdf5_keys)
@@ -122,16 +122,16 @@ class SequenceDataset(torch.utils.data.Dataset):
             with open(split_file, 'r') as f:
                 self.hdf5_keys = json.load(f)
         else:
-            if self.split == "train": 
+            if self.split == "train":
                 self.hdf5_keys = self.hdf5_keys[:num_train]
             else:
                 self.hdf5_keys = self.hdf5_keys[num_train:]
 
-        # if sort by lang, we first shuffle the task permutation and then the episodes 
+        # if sort by lang, we first shuffle the task permutation and then the episodes
         # this ensures that for most indices, there's no overlap between tasks
         self.sort_by_lang = dataset_config.sort_by_lang
-        
-        if self.split == "val": 
+
+        if self.split == "val":
             self.min_demos = 1
 
         if self.sort_by_lang:
@@ -141,7 +141,7 @@ class SequenceDataset(torch.utils.data.Dataset):
             # remove all verbs that have length shorter than min_demos
             self.verb_to_episode = {k: sorted(v) for k, v in self.verb_to_episode.items() if len(v) >= self.min_demos}
 
-            # ablation: use only a fraction of the dataset 
+            # ablation: use only a fraction of the dataset
             if dataset_config.dataset_fraction < 1.0:
                 for k in self.verb_to_episode:
                     num_demos = max(int(len(self.verb_to_episode[k]) * dataset_config.dataset_fraction), self.min_demos)
@@ -155,38 +155,38 @@ class SequenceDataset(torch.utils.data.Dataset):
             }
 
         # rebalance tasks
-        self.rebalance_tasks = dataset_config.rebalance_tasks 
+        self.rebalance_tasks = dataset_config.rebalance_tasks
         if self.rebalance_tasks:
             assert self.sort_by_lang, "Rebalance tasks only works with sort by lang"
             # calculate median of the number of trajectories for each task
-            if self.split == "train": 
+            if self.split == "train":
                 self.rebalance_length = int(np.median([len(i) for i in self.verb_to_episode.values()]))
                 # self.rebalance_length = int(np.quantile([len(i) for i in self.verb_to_episode.values()], 0.75)) # for droid pre-training
             else:
                 self.rebalance_length = 5
             print("Each task is rebalanced to have length: ", self.rebalance_length)
 
-        # define image, proprio, and action keys 
+        # define image, proprio, and action keys
         self.image_keys = dataset_json["image_keys"]
         self.proprio_keys = dataset_json["proprio_keys"]
         self.action_keys = dataset_json["action_keys"]
 
-        # define sequence length 
+        # define sequence length
         self.seq_length = shared_config.seq_length
-        
+
         self.num_weighted_steps = dataset_config.num_weighted_steps
 
         self.goal_conditioned = dataset_config.goal_conditioned
 
-        # define rotation format 
+        # define rotation format
         self.rot_6d = shared_config.rot_6d
 
-        # non overlapping subsequence? 
+        # non overlapping subsequence?
         self.non_overlapping : Union[bool, int] = dataset_config.non_overlapping
 
         # enable repeating trajectory so that it can learn the copying behavior
         self.num_repeat_traj = dataset_config.num_repeat_traj
-        
+
         # define use delta action flag
         self.use_delta_action = shared_config.use_delta_action
 
@@ -194,8 +194,8 @@ class SequenceDataset(torch.utils.data.Dataset):
         self.skip_step = dataset_config.skip_step
         self.proprio_noise = dataset_config.proprio_noise
         self.action_noise = dataset_config.action_noise
-    
-        # vision transform 
+
+        # vision transform
         # we do not need normalization, see get_item
         if vision_transform is not None:
             self.vision_transform = transforms.Compose([t for t in vision_transform.transforms if not isinstance(t, transforms.ToTensor) and not isinstance(t, transforms.ColorJitter)])
@@ -212,7 +212,7 @@ class SequenceDataset(torch.utils.data.Dataset):
             self.no_aug_vision_transform = self.vision_transform
         print("vision transforms")
         print(self.vision_transform)
-        
+
         if dataset_config.vision_aug:
             self.vision_aug = True
             self.contrast_range = [0.8, 1.2]
@@ -223,15 +223,15 @@ class SequenceDataset(torch.utils.data.Dataset):
         else:
             self.vision_aug = False
 
-        # change prediction to be k steps 
+        # change prediction to be k steps
         self.num_pred_steps = shared_config.num_pred_steps
         assert self.num_pred_steps >= 1, "Number of prediction steps must be at least 1"
         print("Number of prediction steps: ", self.num_pred_steps)
 
         # rebalance the dataset with respect to the number of tasks in each group. The grouping is calculated so that
-        # each group is repeated the same number of times 
+        # each group is repeated the same number of times
         self.task_grouping = dataset_json.get("task_grouping", None)
-        if self.task_grouping is not None: 
+        if self.task_grouping is not None:
             task_grouping = json.load(open(self.task_grouping, 'r'))
             average_num_tasks = np.mean([len(v) for v in task_grouping["tasks"].values()])
             print("Average number of tasks: ", average_num_tasks)
@@ -251,7 +251,7 @@ class SequenceDataset(torch.utils.data.Dataset):
                     for t in task_lists:
                         self.upweight_tasks[t] = upweight_factor
 
-        # load the dataset 
+        # load the dataset
         self.shuffle_dataset(seed=0)
 
     def total_seq_length(self):
@@ -297,18 +297,18 @@ class SequenceDataset(torch.utils.data.Dataset):
                 for s in range(self.epi_len_mapping_json[key]):
                     self.steps.append(
                         {
-                            "episode_id" : key, 
+                            "episode_id" : key,
                             "step" : s,
                             "eos" : s == self.epi_len_mapping_json[key] - 1,
                         }
                     )
-    
+
     def shuffle_dataset_goal_conditioned(self, seed=0):
         """
         Shuffle the dataset according to the seed
         """
         rng = np.random.RandomState(seed=seed)
-        # first we shuffle the verbs 
+        # first we shuffle the verbs
         verbs = list(self.verb_to_episode.keys())
         rng.shuffle(verbs)
 
@@ -317,7 +317,7 @@ class SequenceDataset(torch.utils.data.Dataset):
         for v in verbs:
             # shuffle the episode ids
             if self.rebalance_tasks:
-                # update rebalance length based on task grouping if defined 
+                # update rebalance length based on task grouping if defined
                 rl = self.rebalance_length
                 if self.task_grouping is not None:
                     rl = int(rl * self.upweight_tasks[v])
@@ -337,7 +337,7 @@ class SequenceDataset(torch.utils.data.Dataset):
             for s in range(self.epi_len_mapping_json[key]):
                 self.steps.append(
                     {
-                        "episode_id" : key, 
+                        "episode_id" : key,
                         "step" : s,
                         "eos" : s == self.epi_len_mapping_json[key] - 1,
                     }
@@ -345,12 +345,12 @@ class SequenceDataset(torch.utils.data.Dataset):
                 if s == 0:
                     self.usable_indices.append(len(self.steps) - 1)
 
-    def shuffle_dataset_sort_by_lang(self, seed=0): 
+    def shuffle_dataset_sort_by_lang(self, seed=0):
         """
         Shuffle the dataset according to the seed
         """
         rng = np.random.RandomState(seed=seed)
-        # first we shuffle the verbs 
+        # first we shuffle the verbs
         verbs = list(self.verb_to_episode.keys())
         rng.shuffle(verbs)
 
@@ -359,7 +359,7 @@ class SequenceDataset(torch.utils.data.Dataset):
         for v in verbs:
             # shuffle the episode ids
             if self.rebalance_tasks:
-                # update rebalance length based on task grouping if defined 
+                # update rebalance length based on task grouping if defined
                 rl = self.rebalance_length
                 if self.task_grouping is not None:
                     rl = int(rl * self.upweight_tasks[v])
@@ -377,12 +377,12 @@ class SequenceDataset(torch.utils.data.Dataset):
             if task_length < self.seq_length:
                 continue
 
-            # initialize the current step index for the verb 
+            # initialize the current step index for the verb
             verb_step_idx = 0
             cache = []
             ranges = []
 
-            # calculate the ranges of trajectories in index space 
+            # calculate the ranges of trajectories in index space
             start_idx = 0
             for key, num_repeat in zip(episode_keys, repeats):
                 trajectory_length = self.epi_len_mapping_json[key]
@@ -395,13 +395,13 @@ class SequenceDataset(torch.utils.data.Dataset):
                     for s in range(self.epi_len_mapping_json[key]):
                         cache.append(
                             {
-                                "episode_id" : key, 
+                                "episode_id" : key,
                                 "step" : s,
                                 "eos" : s == self.epi_len_mapping_json[key] - 1,
                             }
                         )
-                        # if task_barrier = True, it ensures that within each batch, there is only one verb/task 
-                        # if verb_step_idx + self.seq_length == self.verb_to_numsteps, it means that 
+                        # if task_barrier = True, it ensures that within each batch, there is only one verb/task
+                        # if verb_step_idx + self.seq_length == self.verb_to_numsteps, it means that
                         # we have reached the end of the task, and we shouldn't include the next step
                         if self.task_barrier and verb_step_idx + self.seq_length > task_length:
                             continue
@@ -409,9 +409,9 @@ class SequenceDataset(torch.utils.data.Dataset):
                             # update the verb to idx mapping
                             verb_to_idx[v].append(len(self.steps) + verb_step_idx)
                         verb_step_idx += 1
-            
-            # shuffle cache based on ranges 
-            # we first shuffle range as randomly switch the consecutive two trajectories 
+
+            # shuffle cache based on ranges
+            # we first shuffle range as randomly switch the consecutive two trajectories
             if self.shuffle_repeat_traj:
                 for i in range(len(ranges) - 1):
                     if rng.uniform() < 0.5:
@@ -430,7 +430,7 @@ class SequenceDataset(torch.utils.data.Dataset):
             data_length = len(self.usable_indices)
         else:
             data_length = len(self.steps) - self.seq_length + 1
-        
+
         if self.non_overlapping:
             if isinstance(self.non_overlapping, bool):
                 new_data_length = data_length // self.seq_length
@@ -443,11 +443,11 @@ class SequenceDataset(torch.utils.data.Dataset):
                 data_length = new_data_length
 
         return data_length
-    
+
     def __getitem__(self, index):
         """
         Get the subsequence of the dataset starting from index to index + sequence_length
-        return a diction of shape 
+        return a diction of shape
         {
             "observation": torch.Tensor, shape (seq_length, num_cameras, 3, 224, 224)
             "proprio": torch.Tensor, shape (seq_length, num_pred_steps, proprio_dim)
@@ -475,31 +475,31 @@ class SequenceDataset(torch.utils.data.Dataset):
                 obs_start_end_epi[s["episode_id"]].append(s["step"])
 
         # find the start and end of each episode
-        # due to the repetition, we need to store a list of tuples 
+        # due to the repetition, we need to store a list of tuples
         # {k:[(start, end), ...]}
         start_end_epi = {
-            k : find_increasing_subsequences(v) for k, v in start_end_epi.items() 
-        } 
+            k : find_increasing_subsequences(v) for k, v in start_end_epi.items()
+        }
         obs_start_end_epi = {
             k : find_increasing_subsequences(v) for k, v in obs_start_end_epi.items()
         }
 
         proprio = self.helper_load_proprio(start_end_epi) # (seq_length + num_pred_steps - 1, proprio_dim)
         action = self.helper_load_action(start_end_epi) # (seq_length + num_pred_steps - 1, proprio_dim)
-        # concatenate eos to action 
+        # concatenate eos to action
         action = torch.cat([action, eos[:, None]], dim=-1) # (seq_length, action_dim)
-        
+
         # process action and proprio so that they are multi step prediction
         proprio = self.convert_multi_step(proprio, eos)[:self.seq_length] # (seq_length, num_pred_steps, proprio_dim)
         action = self.convert_multi_step(action, eos)[:self.seq_length] # (seq_length, num_pred_steps, action_dim)
-        
+
         if self.use_delta_action:
             if not self.rot_6d:
                 print("Warning: use_delta_action is set to True, but rot_6d is set to False. This is not supported.")
             else:
                 action = convert_delta_action(action.numpy(), proprio.numpy())
                 action = torch.from_numpy(action).float()
-            
+
         observation = self.helper_load_image(obs_start_end_epi)
 
         # if we are goal conditioned, we need to add the goal to the observation
@@ -556,7 +556,7 @@ class SequenceDataset(torch.utils.data.Dataset):
         else:
             prompt_mask, weight_mask = create_prompt_mask(action[...,0,-1],self.num_weighted_steps)
             prompt_mask = torch.from_numpy(prompt_mask).float()
-            weight_mask = torch.from_numpy(weight_mask).float() 
+            weight_mask = torch.from_numpy(weight_mask).float()
         return {
             "observation": observation,
             "proprio": proprio,
@@ -564,14 +564,14 @@ class SequenceDataset(torch.utils.data.Dataset):
             "prompt_mask": prompt_mask,
             "weight_mask": weight_mask
         }
-    
 
-    def convert_multi_step(self, data : torch.Tensor, eos : Union[torch.Tensor, np.ndarray]) -> torch.Tensor: 
-        """Convert the data for multi step prediction 
+
+    def convert_multi_step(self, data : torch.Tensor, eos : Union[torch.Tensor, np.ndarray]) -> torch.Tensor:
+        """Convert the data for multi step prediction
 
         Args:
             action (torch.Tensor): the action to convert, of shape (seq_length, dim)
-        
+
         Returns:
             torch.Tensor: the converted action, of shape (seq_length, num_pred_steps, dim)
         """
@@ -586,7 +586,7 @@ class SequenceDataset(torch.utils.data.Dataset):
             demo_end = pos[i]
             data_chunked.append(convert_multi_step(data[demo_start : demo_end], self.num_pred_steps))
         return torch.cat(data_chunked, dim=0)
-        
+
     def helper_load_proprio(self, start_end_epi):
         """
         Load proprioception data from the dataset
@@ -600,7 +600,7 @@ class SequenceDataset(torch.utils.data.Dataset):
                 for s, e in start_end_epi[epi]:
                     data.append(self.get_key_from_demo(epi, k, s, e))
             proprio[k] = np.concatenate(data, axis=0)
-            
+
         ret = proprio[self.proprio_keys[0]]
 
         if self.proprio_noise > 0:
@@ -611,7 +611,7 @@ class SequenceDataset(torch.utils.data.Dataset):
                 ret[:, 3:] /= np.linalg.norm(ret[:, 3:], axis=-1, keepdims=True)
 
         rot = ret[:, 3:]
-        # deal with rot_6d 
+        # deal with rot_6d
         if self.rot_6d:
             if rot.shape[1] == 4:
                 # robomimic dataset has format wxyz
@@ -631,7 +631,7 @@ class SequenceDataset(torch.utils.data.Dataset):
         proprio_vec = torch.from_numpy(proprio_vec).float()
         return proprio_vec
 
-    
+
     def helper_load_action(self, start_end_epi):
         """
         Load action data from the dataset
@@ -643,24 +643,24 @@ class SequenceDataset(torch.utils.data.Dataset):
                 for s, e in start_end_epi[epi]:
                     data.append(self.get_key_from_demo(epi, k, s, e))
             action[k] = np.concatenate(data, axis=0)
-        
+
         if self.action_noise > 0:
             # add noise to the action
             ret = action[self.action_keys[0]]
             ret += np.random.normal(0, self.action_noise, ret.shape)
             action[self.action_keys[0]] = ret
-            
+
         if self.rot_6d:
             ret = action[self.action_keys[0]]
             rot = ret[:, 3:]
             rot = euler_to_rot_6d(rot)
             ret = np.concatenate([ret[:, :3], rot], axis=-1)
             action[self.action_keys[0]] = ret
-            
+
         action_vec = np.concatenate([action[k] for k in self.action_keys], axis=-1)
         action_vec = torch.from_numpy(action_vec).float()
         return action_vec
-    
+
     def helper_load_image(self, start_end_epi):
         """
         Load image data from the dataset
@@ -673,13 +673,13 @@ class SequenceDataset(torch.utils.data.Dataset):
                 for s, e in start_end_epi[epi]:
                     subsequence = self.get_key_from_demo(epi, k, s, e)
                     if dtype is None:
-                        dtype = subsequence.dtype 
+                        dtype = subsequence.dtype
                         if dtype == 'uint8':
                             norm = 255.0
                         else:
                             norm = 1.0
                     subsequence = torch.from_numpy(subsequence / norm)
-                    # data aug for brightness and contrast 
+                    # data aug for brightness and contrast
                     if self.vision_aug:
                         contrast = np.random.uniform(self.contrast_range[0], self.contrast_range[1])
                         brightness = np.random.uniform(self.brightness_range[0], self.brightness_range[1])
@@ -693,16 +693,16 @@ class SequenceDataset(torch.utils.data.Dataset):
                     else:
                         subsequence = self.vision_transform(subsequence).float()
                     data.append(subsequence)
-            image[k] = torch.cat(data, dim=0) # concat on the time axis 
-        
+            image[k] = torch.cat(data, dim=0) # concat on the time axis
+
         image_vec = torch.stack([image[k] for k in self.image_keys], dim=1).float()
         return image_vec
-    
+
     def get_key_from_demo(
-        self, 
-        demo_id : str, 
-        key : str, 
-        seq_begin_index : int, 
+        self,
+        demo_id : str,
+        key : str,
+        seq_begin_index : int,
         seq_end_index : int,
     ) -> np.ndarray:
         """
@@ -712,7 +712,7 @@ class SequenceDataset(torch.utils.data.Dataset):
             key: str, the key to get from the demo
             seq_begin_index: int, the beginning index of the sequence
             seq_end_index: int, the ending index of the sequence (inclusive)
-        
+
         Returns:
             np.ndarray, the data from the demo
         """

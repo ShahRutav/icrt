@@ -1,10 +1,10 @@
-import torch 
+import torch
 from typing import Union, List, Tuple, Literal
-import json 
+import json
 import numpy as np
 from scipy.spatial.transform import Rotation
 
-def rot_mat_to_rot_6d(rot_mat : np.ndarray) -> np.ndarray: 
+def rot_mat_to_rot_6d(rot_mat : np.ndarray) -> np.ndarray:
     """
     Convert a rotation matrix to 6d representation
     rot_mat: N, 3, 3
@@ -51,10 +51,10 @@ def quat_to_rot_6d(quat : np.ndarray, format : str = "wxyz") -> np.ndarray:
     """
     Convert quaternion to 6d representation
     quat: N, 4
-    robomimic: 
+    robomimic:
     https://mujoco.readthedocs.io/en/2.2.1/programming.html#:~:text=To%20represent%203D%20orientations%20and,cos(a%2F2).
-    To represent 3D orientations and rotations, MuJoCo uses unit quaternions - namely 4D unit vectors arranged as q = (w, x, y, z). 
-    Here (x, y, z) is the rotation axis unit vector scaled by sin(a/2), where a is the rotation angle in radians, and w = cos(a/2). 
+    To represent 3D orientations and rotations, MuJoCo uses unit quaternions - namely 4D unit vectors arranged as q = (w, x, y, z).
+    Here (x, y, z) is the rotation axis unit vector scaled by sin(a/2), where a is the rotation angle in radians, and w = cos(a/2).
     Thus the quaternion corresponding to a null rotation is (1, 0, 0, 0). This is the default setting of all quaternions in MJCF.
     """
     assert format in ["wxyz", "xyzw"], "Invalid quaternion format, only support wxyz or xyzw"
@@ -85,18 +85,18 @@ def euler_to_quat(euler : np.ndarray, format_euler="XYZ", format_quat="wxyz") ->
         quat = quat[:, [3, 0, 1, 2]]
     return quat
 
-def gram_schmidt(vectors : np.ndarray) -> np.ndarray: 
+def gram_schmidt(vectors : np.ndarray) -> np.ndarray:
     """
     Apply Gram-Schmidt process to a set of vectors
-    vectors are indexed by rows 
+    vectors are indexed by rows
 
-    vectors: batchsize, N, D 
+    vectors: batchsize, N, D
 
     return: batchsize, N, D
     """
     if len(vectors.shape) == 2:
         vectors = vectors[None]
-    
+
     basis = np.zeros_like(vectors)
     basis[:, 0] = vectors[:, 0] / np.linalg.norm(vectors[:, 0], axis=-1, keepdims=True)
     for i in range(1, vectors.shape[1]):
@@ -168,29 +168,29 @@ def convert_delta_action(action, proprio):
     """
     trans = action[:, :, :3].reshape(-1, 3)
     rot = action[:, :, 3:9].reshape(-1, 6)
-    
+
     rot =  Rotation.from_matrix(rot_6d_to_rot_mat(rot))
-    
+
     current_state = np.repeat(proprio[:, 0:1],action.shape[1],1)
     current_trans = current_state[:, :, :3].reshape(-1, 3)
     current_rot = current_state[:,:, 3:9]# S, T, 6
     current_rot =  Rotation.from_matrix(rot_6d_to_rot_mat(current_rot.reshape(-1, 6)))
-    
+
     delta_rot = (current_rot.inv()*rot).as_matrix()
     delta_trans = np.einsum('ijk,ik->ij', current_rot.inv().as_matrix(),(trans-current_trans))
 
     delta_rot = rot_mat_to_rot_6d(delta_rot).reshape(-1,action.shape[1],6)
     delta_trans = delta_trans.reshape(-1,action.shape[1],3)
-    
+
     if action.shape[-1] == proprio.shape[-1]:
         #no eos
         delta_action = np.concatenate([delta_trans, delta_rot, action[:,:,-1:]], axis=-1)
     else:
         #with eos
         delta_action = np.concatenate([delta_trans, delta_rot, action[:,:,-2:]], axis=-1)
-    
+
     return delta_action
-    
+
 def convert_abs_action(action,proprio):
     '''
     Calculate the next state from the delta action and the current proprioception
@@ -200,17 +200,17 @@ def convert_abs_action(action,proprio):
     delta_trans = action[:, :, :3].reshape(-1, 3)
     delta_rot = action[:, :, 3:9].reshape(-1,6)
     delta_rot =  Rotation.from_matrix(rot_6d_to_rot_mat(delta_rot))
-    
+
     current_state = np.repeat(proprio[:, 0:1],action.shape[1],1)
     current_trans = current_state[:, :, :3].reshape(-1, 3)
     current_rot = Rotation.from_matrix(rot_6d_to_rot_mat(current_state[:,:, 3:9].reshape(-1,6)))
-    
+
     trans = np.einsum('ijk,ik->ij',current_rot.as_matrix(),delta_trans) + current_trans
     rot = (current_rot*delta_rot).as_matrix()
-    
+
     rot = rot_mat_to_rot_6d(rot).reshape(-1,action.shape[1],6)
     trans = trans.reshape(-1,action.shape[1],3)
-    
+
     if action.shape[-1] == proprio.shape[-1]:
         #no eos
         desired_mat = np.concatenate([trans, rot, action[:,:,-1:]], axis=-1)
@@ -224,12 +224,12 @@ def find_increasing_subsequences(arr : List[int]) -> List[Tuple[int, int]]:
     4,5,6,7,8,9,1,2,3,4,5,6,7,8,9,1,2,3
     Find the all increasing subsequence in the order present in the dataset and return the values
     which should be [(4, 9), (1,9), (1,3)],
-    
-    args: 
+
+    args:
         arr: List[int] - list of integers
     """
     subsequences = []
-    start = arr[0] 
+    start = arr[0]
     for i in range(1, len(arr)):
         if arr[i] - arr[i-1] <= 0:
             subsequences.append((start, arr[i-1]))
@@ -268,15 +268,15 @@ def create_prompt_mask(eos_vector,num_steps):
     return prompt_mask, weight_mask
 
 def scale_action(
-        action : torch.Tensor, 
-        stat : dict, 
+        action : torch.Tensor,
+        stat : dict,
         type : Literal["minmax", "standard"] = "standard"
-) -> torch.Tensor: 
+) -> torch.Tensor:
     """
-    action: S, T, action_dim 
+    action: S, T, action_dim
     stat: dictionary
     """
-    # move stats to action device 
+    # move stats to action device
     for k, v in stat.items():
         stat[k] = v.to(action.device)
     action_dim = stat["min"].shape[0]
@@ -287,15 +287,15 @@ def scale_action(
     return action
 
 def unscale_action(
-        action : torch.Tensor, 
-        stat : dict, 
+        action : torch.Tensor,
+        stat : dict,
         type : Literal["minmax", "standard"] = "standard"
-) -> torch.Tensor: 
+) -> torch.Tensor:
     """
-    action: S, T, action_dim 
+    action: S, T, action_dim
     stat: dictionary
     """
-    # move stats to action device 
+    # move stats to action device
     for k, v in stat.items():
         stat[k] = v.to(action.device)
     action_dim = stat["min"].shape[0]

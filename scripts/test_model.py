@@ -49,6 +49,7 @@ def main(args : ExperimentConfig):
         train=args.train,
     )
 
+
     timm_data_cfg = timm.data.resolve_data_config(model.vision_encoder.model.pretrained_cfg)
     no_aug_vision_transform = timm.data.create_transform(**timm_data_cfg)
     if args.dataset_cfg.vision_aug:
@@ -59,6 +60,7 @@ def main(args : ExperimentConfig):
     vision_transform = timm.data.create_transform(**timm_data_cfg)
 
     model.to(device)
+    import ipdb; ipdb.set_trace()
 
     model_without_ddp = model
 
@@ -66,9 +68,6 @@ def main(args : ExperimentConfig):
     if args.model_cfg.policy_cfg.pretrained_path is not None:
         print("Finetuning from %s" % args.model_cfg.policy_cfg.pretrained_path)
         misc.load_model(model_without_ddp, args.model_cfg.policy_cfg.pretrained_path)
-
-    print("Model trainable params: ")
-    print(model_without_ddp.state_dict().keys())
 
     if args.distributed:
         model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=False)
@@ -93,10 +92,10 @@ def main(args : ExperimentConfig):
     loss_scaler = NativeScaler()
 
     total, trainable = model_without_ddp.get_total_parameters(), model_without_ddp.get_trainable_parameters()
-    print("trainable: ", trainable)
-    print("Total params: ", total)
+    print("trainable: ", trainable/1e6, "M")
+    print("Total params: ", total/1e6, "M")
     print("percentage trainable: ", trainable / total)
-    # --resume
+    # print all parameter names that are not trainable
     misc.resume_from_ckpt(args=args, model_without_ddp=model_without_ddp, optimizer=optimizer, loss_scaler=loss_scaler)
 
     num_tasks = misc.get_world_size()
@@ -123,104 +122,15 @@ def main(args : ExperimentConfig):
     dataset_train.save_split(os.path.join(args.logging_cfg.output_dir, "train_split.json"))
     dataset_val.save_split(os.path.join(args.logging_cfg.output_dir, "val_split.json"))
 
-    # Start a wandb run with `sync_tensorboard=True`
-    if global_rank == 0 and args.logging_cfg.log_name is not None:
-        wandb.init(entity="rutavms", project="icrt_lite", config=args, name=args.logging_cfg.log_name, sync_tensorboard=True)
-
-    # SummaryWrite
-    if global_rank == 0 and args.logging_cfg.log_dir is not None:
-        os.makedirs(args.logging_cfg.log_dir, exist_ok=True)
-        log_writer = SummaryWriter(log_dir=args.logging_cfg.log_dir)
-    else:
-        log_writer = None
-
+    log_writer = None
     print(f"Start training for {args.trainer_cfg.epochs} epochs")
     start_time = time.time()
 
     # for resume, we need to instantiate new samplers
     resume_reload = args.shared_cfg.resume is not None
 
-    for epoch in range(args.shared_cfg.start_epoch, args.trainer_cfg.epochs):
+    # for epoch in range(args.shared_cfg.start_epoch, args.trainer_cfg.epochs):
 
-        if resume_reload or epoch % args.shared_cfg.split_epoch == 0:
-            print(f"Shuffling sequences every {args.shared_cfg.split_epoch} epochs, epoch: {epoch}")
-            dataset_train.shuffle_dataset(epoch)
-            dataset_val.shuffle_dataset(epoch)
-            print("Recreating dataloaders ...")
-            sampler_train = misc.DistributedSubEpochSampler(
-                dataset_train, num_replicas=num_tasks, rank=global_rank, split_epoch=args.shared_cfg.split_epoch, shuffle=True
-            )
-            sampler_val = misc.DistributedSubEpochSampler(
-                dataset_val, num_replicas=num_tasks, rank=global_rank, split_epoch=args.shared_cfg.split_epoch, shuffle=False
-            )
-            print("Sampler_train = %s" % str(sampler_train))
-            print("length of train sampler: ", len(sampler_train))
-            print("Sampler_val = %s" % str(sampler_val))
-            print("length of val sampler: ", len(sampler_val))
-            data_loader_train = MultiEpochsDataLoader(
-                dataset_train, sampler=sampler_train,
-                batch_size=args.shared_cfg.batch_size,
-                num_workers=args.trainer_cfg.num_workers,
-                pin_memory=args.trainer_cfg.pin_memory,
-                drop_last=True,
-            )
-            if len(sampler_val) > args.shared_cfg.batch_size:
-                data_loader_val = MultiEpochsDataLoader(
-                    dataset_val, sampler=sampler_val,
-                    batch_size=args.shared_cfg.batch_size,
-                    num_workers=args.trainer_cfg.num_workers,
-                    pin_memory=args.trainer_cfg.pin_memory,
-                    drop_last=True,
-                )
-            else:
-                data_loader_val = None
-            print("Done recreating dataloaders!")
-            print("length of dataset: ", len(dataset_train))
-            print("length of dataloader: ", len(data_loader_train))
-            resume_reload = False
-
-        if args.distributed:
-            data_loader_train.sampler.set_epoch(epoch)
-            if data_loader_val is not None:
-                data_loader_val.sampler.set_epoch(epoch)
-
-        train_stats = train_one_epoch(
-            model, data_loader_train,
-            optimizer, device, epoch, loss_scaler,
-            log_writer=log_writer,
-            args=args
-        )
-
-        if data_loader_val is not None:
-            with torch.no_grad():
-                val_stats = train_one_epoch(
-                    model, data_loader_val,
-                    optimizer, device, epoch, loss_scaler,
-                    log_writer=log_writer, validate=True,
-                    args=args
-                )
-
-            print("Validation Epoch {}".format(epoch))
-
-        if args.logging_cfg.output_dir and (epoch % args.shared_cfg.save_every == 0 or epoch + 1 == args.trainer_cfg.epochs):
-            misc.save_model(
-                args=args, model=model, model_without_ddp=model_without_ddp, optimizer=optimizer,
-                loss_scaler=loss_scaler, epoch=epoch)
-
-        log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
-                     'epoch': epoch}
-        if data_loader_val is not None:
-            log_stats.update({f'val_{k}': v for k, v in val_stats.items()})
-
-        if args.logging_cfg.output_dir and misc.is_main_process():
-            if log_writer is not None:
-                log_writer.flush()
-            with open(os.path.join(args.logging_cfg.output_dir, "log.txt"), mode="a", encoding="utf-8") as f:
-                f.write(json.dumps(log_stats) + "\n")
-
-    total_time = time.time() - start_time
-    total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-    print('Training time {}'.format(total_time_str))
 
 if __name__ == '__main__':
     # parsing args

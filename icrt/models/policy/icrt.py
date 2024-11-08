@@ -1,11 +1,11 @@
-# test script: 
+# test script:
 # CUDA_VISIBLE_DEVICES=4 python -m llama.icrt
 
 import json
 import os
 from pathlib import Path
 import numpy as np
-from tqdm import tqdm 
+from tqdm import tqdm
 from collections import OrderedDict, deque
 
 import torch
@@ -22,7 +22,7 @@ from icrt.models.losses import losses
 from icrt.data.utils import convert_abs_action, convert_delta_action, scale_action, unscale_action, load_json
 
 class ICRT(nn.Module):
-    """ 
+    """
     In context robot learning with transformer intialized by llama
     """
     # parameters that are not used in upstream code
@@ -37,43 +37,43 @@ class ICRT(nn.Module):
     # steps to give additional step weight
 
     # adding diffusion hyperparameters
-    num_inference_diffusion_steps = 100 
+    num_inference_diffusion_steps = 100
     num_train_diffusion_steps : int = 100
-    diffusion_beta_start : float = 0.0001 
+    diffusion_beta_start : float = 0.0001
     diffusion_beta_end : float = 0.02
     diffusion_beta_schedule : str = "squaredcos_cap_v2"
-    
+
     def __init__(
-        self, 
+        self,
         llama_ckpt_dir : str, # path to llama checkpoint
         vision_encoder : Union[VisionEncoder, VisionEncoderCNN], # vision encoder
         phase : str = "pretrain", # phase of training
-        num_cameras : int = 2, 
+        num_cameras : int = 2,
         proprio_dim : int = 8, # cartesian + gripper (7 if euler or axis angle, 8 if quarternion)
         action_dim : int = 8, # cartesian + gripper + eos
         adapter_mlp_ratio : int = 4,
         adapter_num_heads : int = 8,
         multikv_attn_pool : bool = False,
-        loss_w_action : float = 1., 
+        loss_w_action : float = 1.,
         lora_rank : int = 4,
         camera_pos_emb : bool = False,
         modality_pos_emb : bool = False,
-        separate_camera_adapter : bool = False,  
+        separate_camera_adapter : bool = False,
         seq_length : int = 256, # number of (s,a) pairs
         rot_6d : bool = False,
-        train : bool = True, 
-        max_batch_size : int = 2, 
-        num_pred_steps : int = 1, 
+        train : bool = True,
+        max_batch_size : int = 2,
+        num_pred_steps : int = 1,
         pred_action_only : bool = False,
         remove_proprio : bool = False,
         no_prompt_loss: bool = False,
         decoder_pred_head : Literal["mlp", "gmm", "diffusion"] = "mlp",
         use_delta_action: bool = False,
         kl_div_loss: bool = False,
-        scale_loss : float = 1.0, 
+        scale_loss : float = 1.0,
         load_llama: bool = True,
         step_weight: float = 1.0, #weight to give to the first 10 steps
-        scratch_llama_config : Optional[str] = None, # config for training llama from scratch, 
+        scratch_llama_config : Optional[str] = None, # config for training llama from scratch,
         num_train_diffusion_steps : Optional[int] = None,
         num_inference_diffusion_steps : Optional[int] = None,
         scale_action : Optional[str] = None,
@@ -82,9 +82,9 @@ class ICRT(nn.Module):
 
         # define language model parameters
         self.scratch_llama_config = scratch_llama_config
-        if self.scratch_llama_config is not None: 
+        if self.scratch_llama_config is not None:
             llama_config_path = self.scratch_llama_config
-        else: 
+        else:
             llama_config_path = os.path.join(llama_ckpt_dir, "params.json")
         with open(llama_config_path, "r") as f:
             params = json.loads(f.read())
@@ -92,27 +92,27 @@ class ICRT(nn.Module):
         # args.seq_length is the number (s,a) pairs, so needs to multiply by 2
         max_batch_size = max_batch_size
         model_args = ModelArgs(
-            max_seq_len=seq_length*2, 
-            max_batch_size=max_batch_size, 
-            w_bias=bias_lora, 
-            w_lora=bias_lora, 
-            lora_rank=lora_rank, 
+            max_seq_len=seq_length*2,
+            max_batch_size=max_batch_size,
+            w_bias=bias_lora,
+            w_lora=bias_lora,
+            lora_rank=lora_rank,
             **params
-        ) 
+        )
         self.latent_dim = model_args.dim
         print(f"language model args: {model_args}")
 
-        # set up diffusion parameters if they are defined 
+        # set up diffusion parameters if they are defined
         if num_train_diffusion_steps is not None:
             self.num_train_diffusion_steps = num_train_diffusion_steps
         if num_inference_diffusion_steps is not None:
             self.num_inference_diffusion_steps = num_inference_diffusion_steps
 
-        # vision encoder 
+        # vision encoder
         self.vision_encoder = vision_encoder
         self.vision_out_dim = self.vision_encoder.out_dim()
-        self.vision_finetune = vision_encoder.finetune 
-        
+        self.vision_finetune = vision_encoder.finetune
+
         # randomly initialize camera positional embeddings
         self.num_cameras = num_cameras
         self.camera_pos_emb = camera_pos_emb
@@ -127,12 +127,12 @@ class ICRT(nn.Module):
         if not self.remove_proprio:
             self.icrt_proprio_encoder = Mlp(in_features=self.proprio_dim, out_features=self.vision_out_dim)
 
-        # attention pooling 
+        # attention pooling
         assert self.attn_latent_len == 1, "currently causal attention only supports latent_len=1"
         attn_pool_cls = MultiKVAttentionPool if multikv_attn_pool else AttentionPool
 
         self.separate_camera_adapter = separate_camera_adapter and num_cameras > 1
-        if self.separate_camera_adapter: 
+        if self.separate_camera_adapter:
             self.icrt_attn_pooling = nn.ModuleList(
                 [attn_pool_cls(
                     self.vision_out_dim, out_features=self.latent_dim // num_cameras, mlp_ratio=adapter_mlp_ratio,
@@ -146,19 +146,19 @@ class ICRT(nn.Module):
                 latent_len=self.attn_latent_len, num_heads=adapter_num_heads,
             )
         self.icrt_vision_norm = nn.LayerNorm(normalized_shape=self.vision_out_dim, eps=1e-6) # consistent with timm ViT Formulation
-        
+
         # flag for prediction action only: if this is true, no proprio prediction is needed
-        self.pred_action_only = pred_action_only 
+        self.pred_action_only = pred_action_only
         self.no_prompt_loss = no_prompt_loss
-        
+
         self.step_weight = step_weight
 
         # decoding to proprio space
         self.num_pred_steps = num_pred_steps
         if not self.pred_action_only:
             self.action_dim = action_dim
-        else: 
-            # we do not predict eos anymore 
+        else:
+            # we do not predict eos anymore
             self.action_dim = action_dim - 1
         self.icrt_action_encoder = Mlp(in_features=self.action_dim, out_features=self.latent_dim)
 
@@ -175,15 +175,15 @@ class ICRT(nn.Module):
             self.icrt_pos_emb_state = nn.Parameter(torch.randn(self.latent_dim))
             self.icrt_pos_emb_act = nn.Parameter(torch.randn(self.latent_dim))
 
-            # initialize them 
+            # initialize them
             nn.init.trunc_normal_(self.icrt_pos_emb_state, std=0.2)
             nn.init.trunc_normal_(self.icrt_pos_emb_act, std=0.2)
 
-        # constructing decoder for proprio and action 
+        # constructing decoder for proprio and action
         self.decoder_pred_head = decoder_pred_head
         self._construct_decoder_heads()
 
-        # transformer 
+        # transformer
         print("initializing main transformer ...")
         torch.set_default_tensor_type(torch.cuda.HalfTensor)
         self.llama = Transformer(model_args)
@@ -212,22 +212,22 @@ class ICRT(nn.Module):
         else:
             self.loss_w_kl = 0.0
 
-        # 7. weighs 
+        # 7. weighs
         if self.pred_action_only:
             # we assign no weight to proprio and eos prediction
             self.loss_w_proprio = 0
-        
+
         self.scale_loss = scale_loss
         total_weight = sum([loss_w_action, self.loss_w_proprio, self.loss_w_kl])
         self.loss_w_action = loss_w_action / total_weight
         self.loss_w_proprio = self.loss_w_proprio / total_weight
         self.loss_w_kl = self.loss_w_kl / total_weight
-        
+
         self.phase = phase
 
-        # whether or not to rescale action 
+        # whether or not to rescale action
         self.scale_action = scale_action
-        if self.scale_action is not None: 
+        if self.scale_action is not None:
             print("Loaded action scaling from ", self.scale_action)
             self.scale_action = load_json(self.scale_action)
             self.scale_action = {k: torch.tensor(v) for k, v in self.scale_action.items()}
@@ -246,9 +246,9 @@ class ICRT(nn.Module):
         """
         def _action_head_constructor(
             head_type : Literal["mlp", "gmm", "diffusion"],
-            input_dim : int, 
+            input_dim : int,
             hidden_features : int,
-            output_dim : int, 
+            output_dim : int,
             loss_fn : Optional[nn.Module] = None,
         ):
             """
@@ -270,7 +270,7 @@ class ICRT(nn.Module):
             elif head_type == "gmm":
                 print("ignoring loss_fn for GMM head")
                 return GMMHead(
-                    input_dim=input_dim, 
+                    input_dim=input_dim,
                     hidden_features=hidden_features,
                     output_dim=output_dim,
                     num_components=self.num_gmm_components,
@@ -278,21 +278,21 @@ class ICRT(nn.Module):
             elif head_type == "diffusion":
                 print("ignoring loss_fn for diffusion head")
                 inference_noise_scheduler = DDPMScheduler(
-                    self.num_train_diffusion_steps, 
-                    self.diffusion_beta_start, 
-                    self.diffusion_beta_end, 
+                    self.num_train_diffusion_steps,
+                    self.diffusion_beta_start,
+                    self.diffusion_beta_end,
                     self.diffusion_beta_schedule,
                     clip_sample = True
                 )
                 train_noise_scheduler = DDPMScheduler(
-                    self.num_inference_diffusion_steps, 
-                    self.diffusion_beta_start, 
-                    self.diffusion_beta_end, 
+                    self.num_inference_diffusion_steps,
+                    self.diffusion_beta_start,
+                    self.diffusion_beta_end,
                     self.diffusion_beta_schedule,
                     clip_sample = True
                 )
                 return DiffusionHead(
-                    input_dim=input_dim, 
+                    input_dim=input_dim,
                     hidden_features=hidden_features,
                     output_dim=output_dim,
                     train_noise_scheduler = train_noise_scheduler,
@@ -301,7 +301,7 @@ class ICRT(nn.Module):
                 )
             else:
                 raise ValueError(f"Unknown head type: {head_type}")
-        
+
         if not self.pred_action_only:
             self.icrt_proprio_decoder = _action_head_constructor(
                 head_type=self.decoder_pred_head,
@@ -320,7 +320,7 @@ class ICRT(nn.Module):
         )
 
     def state_dict(self, destination=None, prefix='', keep_vars=False):
-        state_dict = super(ICRT, self).state_dict(destination, prefix, keep_vars) 
+        state_dict = super(ICRT, self).state_dict(destination, prefix, keep_vars)
         trainable_params = self.get_trainable_params(self.phase) # trainable_params points to different tensor as state_dict
         new_state_dict = OrderedDict()
         for k in trainable_params:
@@ -337,7 +337,7 @@ class ICRT(nn.Module):
                 elif self.vision_finetune and name.startswith("vision_encoder.") and para.requires_grad:
                     trainable[name] = para
                 elif name.startswith("icrt_"):
-                    trainable[name] = para 
+                    trainable[name] = para
         elif phase == 'pretrain':
             for name, para in self.named_parameters():
                 if name.startswith("llama."):
@@ -346,7 +346,7 @@ class ICRT(nn.Module):
                     elif 'gate' in name:
                         trainable[name] = para
                 elif name.startswith("icrt_"):
-                    trainable[name] = para 
+                    trainable[name] = para
                 elif self.vision_finetune and name.startswith("vision_encoder.") and para.requires_grad:
                     trainable[name] = para
         elif phase == 'frozen':
@@ -366,33 +366,33 @@ class ICRT(nn.Module):
             value.requires_grad = True
 
     def preprocessing(
-        self, 
-        observation : torch.Tensor, 
+        self,
+        observation : torch.Tensor,
         proprio : torch.Tensor,
         action : torch.Tensor,
     ) -> torch.Tensor:
         """
         This function preprocesses the observation, proprioception, and action data for the ICRT model.
-        
+
         Parameters:
         observation : B, T, N, 3, H, W (batch size, timesteps, num_cameras, 3, height, width)
         proprio : B, T, proprio_dim (batch size, timesteps, proprio_dim)
         action : B, T, action_dim (batch size, timesteps, action_dim)
         robot / dataset type (optional) : B, T, 1 (batch size, timesteps, 1)
-        
+
         Returns:
         torch.Tensor: The preprocessed data, a tensor of shape (B, T * (latent_len+1), self.latent_dim).
         """
         # proprio processing
         if not self.remove_proprio:
             f_prop = self.icrt_proprio_encoder(proprio) # B, T, self.vision_out_dim
-        
+
         # observation processing
         f_obs = self.vision_encoder(observation) # B, T, N, K, self.vision_out_dim (k is number of patches + cls token)
         f_obs = self.icrt_vision_norm(f_obs)
         if self.camera_pos_emb:
             f_obs = f_obs + self.icrt_camera_pos_emb # add camera positional embeddings
-        
+
         if self.separate_camera_adapter:
             if self.remove_proprio:
                 f_obs = [self.icrt_attn_pooling[i].forward_visual(f_obs[:, :, i]) for i in range(self.num_cameras)]
@@ -405,7 +405,7 @@ class ICRT(nn.Module):
 
         else:
             f_obs = f_obs.view(f_obs.shape[0], f_obs.shape[1], -1, f_obs.shape[-1]) # B, T, N*K, self.vision_out_dim
-            # state extraction 
+            # state extraction
             if self.remove_proprio:
                 f_s = self.icrt_attn_pooling.forward_visual(f_obs) # B, T, latent_len, self.latent_dim
             else:
@@ -428,21 +428,21 @@ class ICRT(nn.Module):
         """
         Predicting action, proprio, and eos from the output of the transformer.
         f_sa: output of the transformer, shape: [B, T, latent_len+1, self.latent_dim]
-        
+
         Returns:
         tuple: (out_action, out_proprio, out_eos)
         out_actions: shape [B, T, num_pred_steps, action_dim]
         out_proprio: shape [B, T, num_pred_steps, proprio_dim]
         out_eos: shape [B, T, num_pred_steps]
         """
-        # parse output into state and action 
+        # parse output into state and action
         out_a = f_sa[:, :, :-1, :]
         out_s = f_sa[:, :-1, -1, :] # we ignore the last state prediction, as there is no action to predict
 
-        # decoding to actions 
+        # decoding to actions
         out_a = out_a.view(B*T, -1, self.latent_dim)
         out_a = self.icrt_action_decoder(out_a).squeeze().view(B, T, self.action_dim * self.num_pred_steps).view(B, T, self.num_pred_steps, self.action_dim)
-        
+
         # decoding to proprio
         if not self.pred_action_only:
             out_proprio = self.icrt_proprio_decoder(out_s).view(B, T - 1, self.num_pred_steps, self.proprio_dim)
@@ -453,22 +453,22 @@ class ICRT(nn.Module):
             out_eos = None
             out_action = out_a
         return out_action, out_proprio, out_eos
-    
-    def preprocessing_attention(self, 
-        observation : torch.Tensor, 
+
+    def preprocessing_attention(self,
+        observation : torch.Tensor,
         proprio : torch.Tensor,
         action : torch.Tensor,) -> torch.Tensor:
         f_prop = self.icrt_proprio_encoder(proprio) # B, T, self.vision_out_dim
-        
+
         # observation processing
         f_obs = self.vision_encoder(observation) # B, T, N, K, self.vision_out_dim (k is number of patches + cls token)
         f_obs = self.icrt_vision_norm(f_obs)
         if self.camera_pos_emb:
             f_obs = f_obs + self.icrt_camera_pos_emb # add camera positional embeddings
-        
+
         f_obs = f_obs.view(f_obs.shape[0], f_obs.shape[1], -1, f_obs.shape[-1]) # B, T, N*K, self.vision_out_dim
         f_s = self.icrt_attn_pooling.forward_attention(f_obs, f_prop) # B, T, latent_len, self.latent_dim
-        
+
         return f_s
 
     def forward_vision_attention(self, sequences : torch.Tensor) -> torch.Tensor:
@@ -477,13 +477,13 @@ class ICRT(nn.Module):
         action = sequences['action']
 
         if self.pred_action_only:
-            # remove eos 
+            # remove eos
             action = action[..., :self.action_dim]
-        
-        # get dimensions 
+
+        # get dimensions
         B, T = observation.shape[:2]
-    
-        # the inputs are only single step 
+
+        # the inputs are only single step
         proprio_in = proprio[:, :, 0] # B, T, num_pred_steps, proprio_dim -> B, T, proprio_dim
         action_in = action[:, :, 0] # B, T, num_pred_steps, proprio_dim -> B, T, proprio_dim
 
@@ -496,7 +496,7 @@ class ICRT(nn.Module):
             observation : B, T, N, 3, H, W (batch size, timesteps, num_cameras, 3, height, width)
             proprio : B, T, num_pred_steps, proprio_dim (batch size, timesteps, proprio_dim)
             action : B, T, num_pred_steps, action_dim (batch size, timesteps, action_dim)
-        return loss: torch.tensor 
+        return loss: torch.tensor
         """
         observation = sequences['observation']
         proprio = sequences['proprio']
@@ -505,13 +505,13 @@ class ICRT(nn.Module):
         weight_mask = sequences['weight_mask'] # B, 1
 
         if self.pred_action_only:
-            # remove eos 
+            # remove eos
             action = action[..., :self.action_dim]
-        
-        # get dimensions 
+
+        # get dimensions
         B, T = observation.shape[:2]
-    
-        # the inputs are only single step 
+
+        # the inputs are only single step
         proprio_in = proprio[:, :, 0] # B, T, num_pred_steps, proprio_dim -> B, T, proprio_dim
         action_in = action[:, :, 0] # B, T, num_pred_steps, proprio_dim -> B, T, proprio_dim
 
@@ -529,10 +529,10 @@ class ICRT(nn.Module):
         #     mask = None
         mask = None
 
-        # forward LM 
+        # forward LM
         out = self.llama(f_sa,mask) # B, T * (latent_len+1), self.latent_dim
 
-        # parse output into state and action 
+        # parse output into state and action
         out = out.view(B, T, -1, self.latent_dim) # B, T, latent_len+1, self.latent_dim
 
         # predicting action, proprio, and eos
@@ -561,10 +561,10 @@ class ICRT(nn.Module):
         else:
             kl_loss = 0.0
 
-        # calculate state loss # we can also some clever stop_grad 
+        # calculate state loss # we can also some clever stop_grad
         if not self.pred_action_only:
             # predict proprio as well
-            proprio_target = proprio[:, 1:, :].reshape(B*(T-1), self.proprio_dim * self.num_pred_steps) 
+            proprio_target = proprio[:, 1:, :].reshape(B*(T-1), self.proprio_dim * self.num_pred_steps)
             state_loss = self.icrt_proprio_decoder.loss(out_s, proprio_target)
         else:
             state_loss = torch.tensor(0.0, dtype=proprio.dtype,device=proprio.device)
@@ -581,10 +581,10 @@ class ICRT(nn.Module):
 
         if self.step_weight > 1:
             weights_for_steps = weight_mask*self.step_weight
-            
+
             state_loss = state_loss * weights_for_steps[:,:-1].reshape(B*(T-1),1)
             action_loss = action_loss * weights_for_steps.view(B*T,1)
-        
+
         if self.no_prompt_loss:
             state_loss = state_loss.sum()/(prompt_mask[:,:-1].sum() * self.proprio_dim * self.num_pred_steps + 1e-6)
             action_loss = action_loss.sum()/(prompt_mask.sum() * self.action_dim * self.num_pred_steps + 1e-6)
@@ -599,7 +599,7 @@ class ICRT(nn.Module):
             "action_loss": action_loss,
             "state_loss": state_loss,
             "kl_loss": kl_loss,
-            "loss": loss, 
+            "loss": loss,
         }
         return loss, loss_dict
 
@@ -622,7 +622,7 @@ class ICRT(nn.Module):
         action: B, T - 1, action_dim (batch size, timesteps, action_dim) # we don't have action for the last state
         (action: B, T, action_dim (batch size, timesteps, action_dim) # for state prediction)
         robot / dataset type (optional) : B, T, 1 (batch size, timesteps, 1)
-        
+
         Returns:
         1) if observation temporal length = action temporal length + 1
             tuple: (out_action, out_eos)
@@ -638,17 +638,17 @@ class ICRT(nn.Module):
         prompt_mask = sequences.get("prompt_mask", None)
 
         if action is not None and self.pred_action_only:
-            # need to remove eos 
+            # need to remove eos
             action = action[..., :self.action_dim]
-        
-        # get dimensions 
+
+        # get dimensions
         B, T = observation.shape[:2]
-        
-        # padding actions so interweaving works 
+
+        # padding actions so interweaving works
         action_T = action.shape[1] if action is not None else 0
         assert T == action_T or T == action_T + 1, f"temporal length differs by {T - action_T}"
         if action_T == T - 1:
-            if action is None: 
+            if action is None:
                 action = torch.zeros(B, 1, self.action_dim, dtype=proprio.dtype).to(device=proprio.device)
             else:
                 action = torch.concatenate([action, torch.zeros(B, 1, self.action_dim).to(device=action.device)], dim=1)
@@ -682,7 +682,7 @@ class ICRT(nn.Module):
         with torch.amp.autocast('cuda', dtype=torch.bfloat16):
             out = self.llama.forward_inference(f_sa, start_pos, mask) # B, T * (latent_len+1), self.latent_dim
 
-        # parse the output of the model 
+        # parse the output of the model
         out = out.view(B, T, -1, self.latent_dim) # B, T, latent_len+1, self.latent_dim
 
 
@@ -690,13 +690,13 @@ class ICRT(nn.Module):
             # predicting action
             out_a_latent = out[:, -1, :-1, :].view(B, (self.latent_len - 1) * self.latent_dim) # B, latent_len, self.latent_dim
             out_a = self.icrt_action_decoder.pred(out_a_latent).view(B, self.num_pred_steps, self.action_dim)
-            
+
             if not self.pred_action_only:
-                # separate eos and action 
+                # separate eos and action
                 out_eos = out_a[:, :, -1] # B, self.num_pred_steps
                 out_action = out_a[:, :, :-1] # B, self.num_pred_steps, action_dim
             else:
-                # there's no eos prediction 
+                # there's no eos prediction
                 out_eos = None
                 out_action = out_a
 
@@ -727,7 +727,7 @@ class ICRT(nn.Module):
     def reset(self, action_exec_horizon : int = 1) -> None:
         """Reset the model for inference.
 
-        Args: 
+        Args:
             action_exec_horizon: int, the number of steps to execute the action for
         """
         assert action_exec_horizon <= self.num_pred_steps, f"Execution horizon must be no greater than prediction horizon"
@@ -741,7 +741,7 @@ class ICRT(nn.Module):
     @torch.inference_mode()
     def prompt(self, prompt_sequences : dict) -> None:
         """Prompt the model with a sequence of observations and actions.
-        assume that the prompt is generated from the dataset 
+        assume that the prompt is generated from the dataset
 
         Args:
             prompt_sequences: dict, a dictionary containing the sequences of observations and actions.
@@ -764,19 +764,19 @@ class ICRT(nn.Module):
         self.forward_inference(prompt_sequences, self.start_pos)
         self.start_pos += prompt_len
         self.first_obs = True
-        
+
     @torch.inference_mode()
     def get_action(self, observation : dict) -> torch.Tensor:
-        """Generating action from observations 
+        """Generating action from observations
 
         Args:
             observation: dict, a dictionary containing the observations.
                 "observation" : 1, 2, N, 3, H, W or 1, 1, N, 3, H, W (batch size, T=2, num_cameras, 3, height, width)
                 "proprio" : 1, 2, proprio_dim or 1, 1, proprio_dim (batch size, T=2, proprio_dim)
-            Note it does not contain action 
-        
+            Note it does not contain action
+
         Returns:
-            torch.Tensor: the action generated by the model: action_dim, 
+            torch.Tensor: the action generated by the model: action_dim,
         """
         tmp = observation.copy()
         if self.last_observation is not None:
@@ -791,14 +791,14 @@ class ICRT(nn.Module):
 
         action = self.action_queue.popleft()
         self.last_action = torch.cat([action.clone().unsqueeze(0).unsqueeze(0), torch.zeros((1, 1, 1), device=action.device)], dim=-1) # add eos
-        
+
         if self.first_obs:
             self.first_obs = False
         else:
             self.start_pos += 2
-        
+
         return action
-    
+
     @torch.inference_mode()
     def get_action_eval(self, observation, abs_gripper_control=False, use_temporal=True, binary_gripper=False, teacher_forcing=False):
         # if abs_gripper_control, then the current model prediction is used instead of the averaged gripper action
@@ -825,7 +825,7 @@ class ICRT(nn.Module):
             #!!!!!!!!!!!!!!!!!!!!binarize the gripper action
             print("raw_gripper_action", action[:,-1])
             action[:,-1] = action[:,-1] > 0.5
-            
+
         #delta action
         if self.use_delta_action:
             delta_action = action.clone()
@@ -836,14 +836,14 @@ class ICRT(nn.Module):
             gripper_action = action[0, -1]
 
         if not use_temporal:
-            if len(self.action_queue) == 0: 
+            if len(self.action_queue) == 0:
                 self.action_queue = deque(action[:self.action_exec_horizon])
             action = self.action_queue.popleft()
         else:
             new_actions = deque(action[:self.action_exec_horizon])
             self.action_queue.append(new_actions)
             actions_current_timestep = torch.empty((len(self.action_queue), action.size(1))).to(action.device)
-            
+
             k = 0.05
             for i, q in enumerate(self.action_queue):
                 actions_current_timestep[i] = q.popleft()
@@ -864,9 +864,9 @@ class ICRT(nn.Module):
             self.first_obs = False
         else:
             self.start_pos += 2
-        
+
         if abs_gripper_control:
             action[-1] = gripper_action
 
-        
+
         return action

@@ -1,0 +1,14 @@
+{
+    "dataset_path": [
+        "/home/rutavms/research/gaze/LIBERO/libero/libero/../datasets/libero_goal/open_the_top_drawer_and_put_the_bowl_inside_demo_temp.hdf5"
+    ],
+    "hdf5_keys": [
+        "/home/rutavms/research/gaze/LIBERO/libero/libero/../datasets/libero_goal/open_the_top_drawer_and_put_the_bowl_inside_demo_temp_keys.json"
+    ],
+    "epi_len_mapping_json": "/home/rutavms/research/gaze/LIBERO/libero/libero/../datasets/libero_goal/open_the_top_drawer_and_put_the_bowl_inside_demo_temp.json",
+    "verb_to_episode": "config/data_config/icrt_mt/verb_to_episode_libero.json",
+    "train_split": 0.95,
+    "action_keys": ["action/cartesian_pose", "action/gripper_position"],
+    "image_keys" : ["observation/agentview_rgb","observation/eye_in_hand_rgb"],
+    "proprio_keys": ["observation/cartesian_pose", "observation/gripper_position"]
+}
