@@ -9,7 +9,7 @@ from . import misc, lr_sched
 from icrt.util.args import ExperimentConfig
 from icrt.models.policy import ICRT
 
-def train_one_epoch(model: ICRT, 
+def train_one_epoch(model: ICRT,
                     data_loader: Iterable, optimizer: torch.optim.Optimizer,
                     device: torch.device, epoch: int, loss_scaler,
                     log_writer=None, validate=False,
@@ -34,13 +34,13 @@ def train_one_epoch(model: ICRT,
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
             lr_sched.adjust_learning_rate(optimizer, data_iter_step / len(data_loader) + epoch, args)
-        
+
         for k, v in dataset_item.items():
             dataset_item[k] = v.to(device, non_blocking=True)
 
         with torch.amp.autocast('cuda', dtype=torch.bfloat16):
             loss, loss_dict = model(dataset_item)
-        
+
         loss_value = loss.item()
         loss_value_dict = {k: v.item() if isinstance(v, torch.Tensor) else v for k, v in loss_dict.items()}
         if not math.isfinite(loss_value):

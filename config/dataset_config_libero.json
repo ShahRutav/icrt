@@ -1,12 +1,30 @@
 {
     "dataset_path": [
-        "/home/rutavms/research/gaze/LIBERO/libero/libero/../datasets/libero_goal/open_the_top_drawer_and_put_the_bowl_inside_demo_temp.hdf5"
+        "/home/rutavms/data/icrt/libero_goal/open_the_middle_drawer_of_the_cabinet_demo_icrt.hdf5",
+        "/home/rutavms/data/icrt/libero_goal/open_the_top_drawer_and_put_the_bowl_inside_demo_icrt.hdf5",
+        "/home/rutavms/data/icrt/libero_goal/push_the_plate_to_the_front_of_the_stove_demo_icrt.hdf5",
+        "/home/rutavms/data/icrt/libero_goal/put_the_bowl_on_the_plate_demo_icrt.hdf5",
+        "/home/rutavms/data/icrt/libero_goal/put_the_bowl_on_the_stove_demo_icrt.hdf5",
+        "/home/rutavms/data/icrt/libero_goal/put_the_bowl_on_top_of_the_cabinet_demo_icrt.hdf5",
+        "/home/rutavms/data/icrt/libero_goal/put_the_cream_cheese_in_the_bowl_demo_icrt.hdf5",
+        "/home/rutavms/data/icrt/libero_goal/put_the_wine_bottle_on_the_rack_demo_icrt.hdf5",
+        "/home/rutavms/data/icrt/libero_goal/put_the_wine_bottle_on_top_of_the_cabinet_demo_icrt.hdf5",
+        "/home/rutavms/data/icrt/libero_goal/turn_on_the_stove_demo_icrt.hdf5"
     ],
     "hdf5_keys": [
-        "/home/rutavms/research/gaze/LIBERO/libero/libero/../datasets/libero_goal/open_the_top_drawer_and_put_the_bowl_inside_demo_temp_keys.json"
+        "/home/rutavms/data/icrt/libero_goal/open_the_middle_drawer_of_the_cabinet_demo_icrt_keys.json",
+        "/home/rutavms/data/icrt/libero_goal/open_the_top_drawer_and_put_the_bowl_inside_demo_icrt_keys.json",
+        "/home/rutavms/data/icrt/libero_goal/push_the_plate_to_the_front_of_the_stove_demo_icrt_keys.json",
+        "/home/rutavms/data/icrt/libero_goal/put_the_bowl_on_the_plate_demo_icrt_keys.json",
+        "/home/rutavms/data/icrt/libero_goal/put_the_bowl_on_the_stove_demo_icrt_keys.json",
+        "/home/rutavms/data/icrt/libero_goal/put_the_bowl_on_top_of_the_cabinet_demo_icrt_keys.json",
+        "/home/rutavms/data/icrt/libero_goal/put_the_cream_cheese_in_the_bowl_demo_icrt_keys.json",
+        "/home/rutavms/data/icrt/libero_goal/put_the_wine_bottle_on_the_rack_demo_icrt_keys.json",
+        "/home/rutavms/data/icrt/libero_goal/put_the_wine_bottle_on_top_of_the_cabinet_demo_icrt_keys.json",
+        "/home/rutavms/data/icrt/libero_goal/turn_on_the_stove_demo_icrt_keys.json"
     ],
-    "epi_len_mapping_json": "/home/rutavms/research/gaze/LIBERO/libero/libero/../datasets/libero_goal/open_the_top_drawer_and_put_the_bowl_inside_demo_temp.json",
-    "verb_to_episode": "config/data_config/icrt_mt/verb_to_episode_libero.json",
+    "epi_len_mapping_json": "/home/rutavms/data/icrt/libero_goal/combined_epi_len_mapping.json",
+    "verb_to_episode": "/home/rutavms/data/icrt/libero_goal/verb_to_episode_libero.json",
     "train_split": 0.95,
     "action_keys": ["action/cartesian_pose", "action/gripper_position"],
     "image_keys" : ["observation/agentview_rgb","observation/eye_in_hand_rgb"],

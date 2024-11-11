@@ -2,7 +2,7 @@ import argparse
 import json
 import numpy as np
 import time
-import tyro 
+import tyro
 import yaml
 import os
 import sys
@@ -63,7 +63,7 @@ class ICRLRolloutPolicy(RolloutPolicy):
         super().__init__(policy)
 
         self.preprocess = preprocess
-        
+
         if self.preprocess is not None:
             self.preprocess = transforms.Compose([t for t in self.preprocess.transforms if not isinstance(t, transforms.ToTensor)])
         else:
@@ -73,7 +73,7 @@ class ICRLRolloutPolicy(RolloutPolicy):
                 transforms.CenterCrop(size=224),
                 transforms.Normalize(mean=torch.tensor([0.4850, 0.4560, 0.4060]), std=torch.tensor([0.2290, 0.2240, 0.2250]))
             ])
-            
+
         self.image_keys = image_keys
         self.proprio_keys = proprio_keys
         self.dataset = dataset
@@ -94,20 +94,20 @@ class ICRLRolloutPolicy(RolloutPolicy):
             demo_sequences = self.dataset.__getitem__(demo_idx)
             self.last_observation = None
             sequences = self._prepare_prompt(demo_sequences)
-            
-            # make sure that the sequence ends on an eos token 
+
+            # make sure that the sequence ends on an eos token
             eos = sequences["action"].squeeze()[..., 0, -1]
             last_eos_idx = torch.where(eos)[0][-1]
-            
-            # cut the observation, proprio, action to the last eos index position 
+
+            # cut the observation, proprio, action to the last eos index position
             for k in sequences:
                 sequences[k] = sequences[k][:, :last_eos_idx+1]
-            
+
             if self.max_prompt_len > 0:
                 for k in sequences:
                     sequences[k] = sequences[k][:, -self.max_prompt_len :].contiguous()
             self.policy.prompt(sequences)
-        
+
 
 
     def _prepare_observation(self, ob, add_eos=True):
@@ -115,26 +115,26 @@ class ICRLRolloutPolicy(RolloutPolicy):
         Prepare raw observation dict from environment for policy.
 
         Args:
-            ob (dict): single observation dictionary from environment (no batch dimension, 
+            ob (dict): single observation dictionary from environment (no batch dimension,
                 and np.array values for each key)
         """
         meta = {}
-        meta["observation"] = np.zeros((len(self.image_keys), ob[self.image_keys[0]].shape[0], ob[self.image_keys[0]].shape[-3], 
+        meta["observation"] = np.zeros((len(self.image_keys), ob[self.image_keys[0]].shape[0], ob[self.image_keys[0]].shape[-3],
                                         ob[self.image_keys[0]].shape[-2], ob[self.image_keys[0]].shape[-1]))
         for i in range(len(self.image_keys)):
             meta["observation"][i,:,:,:,:] = ob[self.image_keys[i]]
         meta["observation"] = np.transpose(meta["observation"], (1, 0, 2, 3, 4)) # T, N, 3, H, W
-        
+
         dtype = ob[self.image_keys[0]].dtype
         norm = 1.0
         if dtype == np.uint8:
             norm = 255.0
         meta["observation"] = meta["observation"] / norm
-        
+
         # proprio
         gripper_width = ob['robot0_gripper_qpos'][:,0] - ob['robot0_gripper_qpos'][:,1]
         ob['robot0_gripper_qpos'] = (1 - gripper_width/Max_Gripper_Width)
-        
+
         for i in range(len(ob['robot0_gripper_qpos'])):
             #calculate ee using fk and update ob
             joint_poses = ob['robot0_joint_pos'][i]
@@ -146,25 +146,25 @@ class ICRLRolloutPolicy(RolloutPolicy):
             ee_quat_mid = (ee_1.rot + ee_2.rot)/2
             ob['robot0_eef_pos'][i] = ee_pos_mid
             ob['robot0_eef_quat'][i] = ee_quat_mid
-            
-        meta["proprio"] = np.concatenate((ob["robot0_eef_pos"], ob['robot0_eef_quat'], ob['robot0_gripper_qpos'][:, None]), axis=-1) 
-        
+
+        meta["proprio"] = np.concatenate((ob["robot0_eef_pos"], ob['robot0_eef_quat'], ob['robot0_gripper_qpos'][:, None]), axis=-1)
+
         ob = meta
 
         if self.rot_6d:
             ob = self._update_rot_6d(ob)
 
         ob = TensorUtils.to_tensor(ob)
-        ob = TensorUtils.to_batch(ob)    
-        
+        ob = TensorUtils.to_batch(ob)
+
         obs = torch.reshape(ob["observation"], (-1, *ob["observation"].shape[-3:]))
         obs = self.preprocess(obs)
-        ob["observation"] = obs.view(*ob["observation"].shape[:-2], 224, 224).float()        
-            
+        ob["observation"] = obs.view(*ob["observation"].shape[:-2], 224, 224).float()
+
         device = TorchUtils.get_torch_device(try_to_use_cuda=True)
         ob = TensorUtils.to_device(ob, device)
         ob = TensorUtils.to_float(ob)
-        
+
         return ob
 
     def _update_rot_6d(self, ob):
@@ -184,11 +184,11 @@ class ICRLRolloutPolicy(RolloutPolicy):
 
         ob = TensorUtils.to_tensor(ob)
         ob = TensorUtils.to_batch(ob)
-      
+
         device = TorchUtils.get_torch_device(try_to_use_cuda=True)
         ob = TensorUtils.to_device(ob, device)
         ob = TensorUtils.to_float(ob)
-      
+
         return ob
 
     def __repr__(self):
@@ -200,7 +200,7 @@ class ICRLRolloutPolicy(RolloutPolicy):
         Produce action from raw observation dict (and maybe goal dict) from environment.
 
         Args:
-            ob (dict): single observation dictionary from environment (no batch dimension, 
+            ob (dict): single observation dictionary from environment (no batch dimension,
                 and np.array values for each key)
             goal (dict): goal observation
         """
@@ -209,13 +209,13 @@ class ICRLRolloutPolicy(RolloutPolicy):
         ob = self._prepare_observation(ob)
         if goal is not None:
             goal = self._prepare_observation(goal)
-        
+
         try:
             self.obs_history.append(ob['proprio'].detach().cpu().numpy())
             self.act_history.append(ob['action'].detach().cpu().numpy())
         except:
             pass
-        
+
         ac = self.policy.get_action(ob)
         # print("predicted action: ", ac)
         action = TensorUtils.to_numpy(ac)
@@ -227,7 +227,7 @@ class ICRLRolloutPolicy(RolloutPolicy):
 
         return action
 
-    
+
 
 def run(config, env_meta, task, args, rollout_model):
     """
@@ -240,7 +240,7 @@ def run(config, env_meta, task, args, rollout_model):
 
     torch.set_num_threads(2)
 
-    
+
     # print(config)
     log_dir = os.path.join(args.logging_cfg.log_dir, task+ "_logs")
     os.makedirs(log_dir, exist_ok=True)
@@ -270,8 +270,8 @@ def run(config, env_meta, task, args, rollout_model):
     for env_name in env_names:
         env = EnvUtils.create_env_from_metadata(
             env_meta=env_meta,
-            env_name=env_name, 
-            render=False, 
+            env_name=env_name,
+            render=False,
             render_offscreen=config.experiment.render_video,
             use_image_obs=True,
             use_depth_obs=False,
@@ -289,8 +289,8 @@ def run(config, env_meta, task, args, rollout_model):
         log_tb=config.experiment.logging.log_tb,
         log_wandb=config.experiment.logging.log_wandb,
     )
-    
-    
+
+
     # save the config as a json file
     with open(os.path.join(log_dir, '..', 'config.json'), 'w') as outfile:
         json.dump(config, outfile, indent=4)
@@ -307,7 +307,7 @@ def run(config, env_meta, task, args, rollout_model):
     print("*" * 50)
     print("")
 
-    
+
     num_episodes = config.experiment.rollout.n
     epoch = 1
     all_rollout_logs, video_paths = TrainUtils.rollout_with_stats(
@@ -322,7 +322,7 @@ def run(config, env_meta, task, args, rollout_model):
         video_skip=config.experiment.get("video_skip", 5),
         terminate_on_success=config.experiment.rollout.terminate_on_success,
     )
-    
+
     # summarize results from rollouts to tensorboard and terminal
     for env_name in all_rollout_logs:
         rollout_logs = all_rollout_logs[env_name]
@@ -349,12 +349,12 @@ def main(
     n_episodes: int = 10,
     max_prompt_len: int = 0,
     action_exec_horizon: int = 1,
-    task_name : str = "all", 
+    task_name : str = "all",
     ):
-    
+
     """Plotting the predicted actions vs the ground truth actions
 
-    Args: 
+    Args:
         train_yaml_path: str, path to the yaml file containing the training configuration
         checkpoint_path: str, path to the checkpoint to load
         demo_index: int, index of the demo to plot
@@ -362,7 +362,7 @@ def main(
         task_name: str, one of ["all", "square", "can", "lift"]
     """
     # we evaluate using the following pretrained_path
-    args : ExperimentConfig = yaml.load(Path(train_yaml_path).read_text(), Loader=yaml.Loader) 
+    args : ExperimentConfig = yaml.load(Path(train_yaml_path).read_text(), Loader=yaml.Loader)
 
     data_json = args.dataset_cfg.dataset_json
     with open(data_json, 'r') as f:
@@ -376,8 +376,8 @@ def main(
     output_dir = args.logging_cfg.output_dir
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     print("Logging results to ", output_dir)
-    
-    
+
+
 
     assert os.path.exists(checkpoint_path), f"Checkpoint path does not exist: {checkpoint_path}"
 
@@ -392,34 +392,34 @@ def main(
     # Loading data config
     data_cfg = json.load(open(args.dataset_cfg.dataset_json, 'r'))
 
-    # make sure the number of cameras is correct 
+    # make sure the number of cameras is correct
     rgb_observations = data_cfg["observation"]["modalities"]["obs"]["rgb"]
     assert len(rgb_observations) == args.shared_cfg.num_cameras, "Number of cameras must match the number of rgb observations"
 
     model = model_constructor(
-        model_config=args.model_cfg, 
+        model_config=args.model_cfg,
         shared_config=args.shared_cfg,
         train=args.train,
     )
 
     timm_data_cfg = timm.data.resolve_data_config(model.vision_encoder.model.pretrained_cfg)
     vision_transform = timm.data.create_transform(**timm_data_cfg)
-    
+
     print("vision transform: ", vision_transform)
 
     model.to(device)
-    
 
-    
+
+
     total, trainable = model.get_total_parameters(), model.get_trainable_parameters()
     print("trainable: ", trainable)
     print("Total params: ", total)
     print("percentage trainable: ", trainable / total)
-    
+
     # loading pretrained checkpoint
     print("loading pretrained model from: ", checkpoint_path)
     misc.load_model(model, checkpoint_path)
-    
+
     if train_val == "train":
         dataset = SequenceDataset(
             dataset_config=args.dataset_cfg,
@@ -427,7 +427,7 @@ def main(
             vision_transform=vision_transform,
             split_file=os.path.join(model_output_dir, "train_split.json")
         )
-    else: 
+    else:
         dataset = SequenceDataset(
             dataset_config=args.dataset_cfg,
             shared_config=args.shared_cfg,
@@ -435,25 +435,25 @@ def main(
             split_file=os.path.join(model_output_dir, "val_split.json")
         )
 
-    # we evaluate the model here 
+    # we evaluate the model here
     model.eval()
-    
-    
+
+
 
     # reset the rotation back
-    assert dataset.rot_6d == args.shared_cfg.rot_6d 
+    assert dataset.rot_6d == args.shared_cfg.rot_6d
 
     rollout_model = ICRLRolloutPolicy(model, dataset, action_exec_horizon, max_prompt_len, preprocess=vision_transform, rot_6d=args.shared_cfg.rot_6d)
-    
-    
-    
+
+
+
     ext_cfg = json.load(open(data_config, 'r'))
     config = config_factory(ext_cfg["algo_name"])
     # update config with external json - this will throw errors if
     # the external config has keys not present in the base algo config
     with config.unlocked():
         config.update(ext_cfg)
-        
+
 
     config.train.data = [dataset_path]
 
@@ -486,7 +486,7 @@ def main(
     # get torch device
     device = TorchUtils.get_torch_device(try_to_use_cuda=config.train.cuda)
 
-  
+
     # lock config to prevent further modifications and ensure missing keys raise errors
     config.lock()
 
@@ -500,7 +500,7 @@ def main(
         except Exception as e:
             res_str = "run failed with error:\n{}\n\n{}".format(e, traceback.format_exc())
         print(res_str)
-        
+
 
 
 

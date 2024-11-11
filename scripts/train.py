@@ -160,7 +160,7 @@ def main(args : ExperimentConfig):
             data_loader_train = MultiEpochsDataLoader(
                 dataset_train, sampler=sampler_train,
                 batch_size=args.shared_cfg.batch_size,
-                num_workers=args.trainer_cfg.num_workers,
+                num_workers=args.trainer_cfg.num_workers // misc.get_world_size(),
                 pin_memory=args.trainer_cfg.pin_memory,
                 drop_last=True,
             )
@@ -168,7 +168,7 @@ def main(args : ExperimentConfig):
                 data_loader_val = MultiEpochsDataLoader(
                     dataset_val, sampler=sampler_val,
                     batch_size=args.shared_cfg.batch_size,
-                    num_workers=args.trainer_cfg.num_workers,
+                    num_workers=args.trainer_cfg.num_workers // misc.get_world_size(),
                     pin_memory=args.trainer_cfg.pin_memory,
                     drop_last=True,
                 )

@@ -1,11 +1,9 @@
 {
     "dataset_path": [
-        "/path/to/merged_data_part1.hdf5", 
-        "/path/to/merged_data_part2.hdf5"
+        "/home/rutavms/research/gaze/icrt/ICRT-MT/merged_data_part2.hdf5"
     ],
     "hdf5_keys": [
-        "/path/to/merged_data_part1_hdf5_keys.json", 
-        "/path/to/merged_data_part2_hdf5_keys.json"
+        "/home/rutavms/research/gaze/icrt/ICRT-MT/merged_data_part2_keys.json"
     ],
     "epi_len_mapping_json": "config/data_config/icrt_mt/epi_len_mapping_json.json",
     "verb_to_episode": "config/data_config/icrt_mt/verb_to_episode.json",

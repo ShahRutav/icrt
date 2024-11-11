@@ -129,8 +129,6 @@ def main(args : ExperimentConfig):
     # for resume, we need to instantiate new samplers
     resume_reload = args.shared_cfg.resume is not None
 
-    # for epoch in range(args.shared_cfg.start_epoch, args.trainer_cfg.epochs):
-
 
 if __name__ == '__main__':
     # parsing args

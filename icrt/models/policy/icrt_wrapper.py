@@ -32,7 +32,7 @@ def undo_vision_transform(obs : torch.Tensor, mean : tuple, std : tuple):
 
 class ICRTWrapper(nn.Module):
     def __init__(
-        self, 
+        self,
         train_yaml_path: Union[str, Path],
         checkpoint_path: Union[str, Path],
         vision_encoder_path: Optional[Union[str, Path]] = None,
@@ -40,7 +40,7 @@ class ICRTWrapper(nn.Module):
     ):
         super().__init__()
 
-        # loading experiment config 
+        # loading experiment config
         args : ExperimentConfig = yaml.load(Path(train_yaml_path).read_text(), Loader=yaml.Loader)
         self.args = args
 
@@ -54,7 +54,7 @@ class ICRTWrapper(nn.Module):
         torch.manual_seed(seed)
         np.random.seed(seed)
         cudnn.benchmark = True
-        
+
         # start model construction
         if vision_encoder_path is not None:
             args.model_cfg.vision_encoder_cfg.vision_encoder = vision_encoder_path
@@ -62,16 +62,16 @@ class ICRTWrapper(nn.Module):
             print("Vision encoder is loaded from the model checkpoint! ")
 
         model = model_constructor(
-            model_config=args.model_cfg, 
+            model_config=args.model_cfg,
             shared_config=args.shared_cfg,
             train=False,
         )
 
-        # obtain vision transforms 
+        # obtain vision transforms
         timm_data_cfg = timm.data.resolve_data_config(model.vision_encoder.model.pretrained_cfg)
         self.preprocess = timm.data.create_transform(**timm_data_cfg)
         self.mean, self.std = timm_data_cfg["mean"], timm_data_cfg["std"]
-        
+
         print("vision transform: ", self.preprocess)
         model.to(self.device)
 
@@ -79,7 +79,7 @@ class ICRTWrapper(nn.Module):
         print("trainable: ", trainable)
         print("Total params: ", total)
         print("percentage trainable: ", trainable / total)
-        
+
         # loading pretrained checkpoint
         print("loading pretrained model from: ", checkpoint_path)
         misc.load_model(model, checkpoint_path)
@@ -97,13 +97,13 @@ class ICRTWrapper(nn.Module):
         else:
             print("warning: vision transforms are not defined. Using default transforms.")
             self.preprocess_PIL = transforms.Compose([
-                transforms.Resize(size=248, max_size=None, interpolation=transforms.InterpolationMode.BICUBIC, antialias=True), 
+                transforms.Resize(size=248, max_size=None, interpolation=transforms.InterpolationMode.BICUBIC, antialias=True),
                 transforms.CenterCrop(size=224),
                 transforms.ToTensor(),
                 transforms.Normalize(mean=torch.tensor([0.4850, 0.4560, 0.4060]), std=torch.tensor([0.2290, 0.2240, 0.2250]))
             ])
             self.preprocess_tensor = transforms.Compose([
-                transforms.Resize(size=248, max_size=None, interpolation=transforms.InterpolationMode.BICUBIC, antialias=True), 
+                transforms.Resize(size=248, max_size=None, interpolation=transforms.InterpolationMode.BICUBIC, antialias=True),
                 transforms.CenterCrop(size=224),
                 transforms.Normalize(mean=torch.tensor([0.4850, 0.4560, 0.4060]), std=torch.tensor([0.2290, 0.2240, 0.2250]))
             ])
@@ -116,9 +116,9 @@ class ICRTWrapper(nn.Module):
 
     def prompt(
         self,
-        side_image: Union[PIL.Image.Image, List[PIL.Image.Image]], 
-        wrist_image : Union[PIL.Image.Image, List[PIL.Image.Image]], 
-        proprio : Union[np.ndarray], 
+        side_image: Union[PIL.Image.Image, List[PIL.Image.Image]],
+        wrist_image : Union[PIL.Image.Image, List[PIL.Image.Image]],
+        proprio : Union[np.ndarray],
         action : Optional[np.ndarray] = None,
     ):
         """
@@ -137,10 +137,10 @@ class ICRTWrapper(nn.Module):
         self.model.prompt(demo_sequence)
 
     def prepare_observations(
-        self, 
-        side_image: Union[PIL.Image.Image, List[PIL.Image.Image], np.ndarray], 
-        wrist_image : Union[PIL.Image.Image, List[PIL.Image.Image], np.ndarray], 
-        proprio : Union[np.ndarray], 
+        self,
+        side_image: Union[PIL.Image.Image, List[PIL.Image.Image], np.ndarray],
+        wrist_image : Union[PIL.Image.Image, List[PIL.Image.Image], np.ndarray],
+        proprio : Union[np.ndarray],
         action : Optional[np.ndarray] = None
     ):
         """
@@ -167,40 +167,41 @@ class ICRTWrapper(nn.Module):
             if wrist_image.dtype == np.uint8:
                 wrist_image = torch.from_numpy(wrist_image / 255.0)
                 wrist_image = wrist_image.permute(0, 3, 1, 2)
-        
-        # find the length of the sequence 
+
+        # find the length of the sequence
         seq_len = len(side_image)
         assert len(side_image) == len(wrist_image) == len(proprio), "Length of the sequence must be the same"
         if action is not None:
             assert len(action) + 1 == seq_len or len(action) == seq_len, "Length of the action sequence must be one less than the observation sequence"
         assert proprio.shape[0] == seq_len, "Length of proprio sequence must match the length of the observation sequence"
-        
-        # construct input dictionary 
+
+        # construct input dictionary
         side_image = torch.cat([preprocess(img)[None] for img in side_image], dim=0)
-        wrist_image = torch.cat([preprocess(img)[None] for img in wrist_image], dim=0) 
-        # interleave the images 
+        wrist_image = torch.cat([preprocess(img)[None] for img in wrist_image], dim=0)
+        # interleave the images
         image_vec = torch.stack([side_image, wrist_image], dim=1)[None].float() # stack along a new axis (seq_len, 2, 3, H, W), then add batch dim
 
-        # process proprio 
+        # process proprio
         rot = proprio[:, 3:-1]
         if self.args.shared_cfg.rot_6d:
             rot = euler_to_rot_6d(rot)
-        proprio = np.concatenate([proprio[:, :3], rot, proprio[:, -1:]], axis=-1) 
+        proprio = np.concatenate([proprio[:, :3], rot, proprio[:, -1:]], axis=-1)
         proprio = torch.tensor(proprio)[None].float()
 
-        # process action 
+        # process action
         if action is not None:
             rot = action[:, 3:-1]
             if self.args.shared_cfg.rot_6d:
                 rot = euler_to_rot_6d(rot)
             action = np.concatenate([action[:, :3], rot, action[:, -1:]], axis=-1)
             if self.args.shared_cfg.use_delta_action:
-                action = convert_delta_action(action[:, None, ...], proprio.numpy().transpose(1, 0, 2)).squeeze()[None, ...]
+                # action = convert_delta_action(action[:, None, ...], proprio.numpy().transpose(1, 0, 2)).squeeze()[None, ...]
+                action = convert_delta_action(action[:, None, ...], proprio.numpy().transpose(1, 0, 2)).transpose(1, 0, 2)
                 action = torch.tensor(action).float()
             else:
                 action = torch.tensor(action)[None].float()
 
-        # NOTE: here we didn't implement 1) support for eos prediction 2) support for euler outputs 
+        # NOTE: here we didn't implement 1) support for eos prediction 2) support for euler outputs
         obs = {
             "observation": image_vec,
             "proprio": proprio,
@@ -209,14 +210,14 @@ class ICRTWrapper(nn.Module):
         return obs
 
     def __call__(
-        self, 
-        side_image: Union[PIL.Image.Image, List[PIL.Image.Image]], 
-        wrist_image : Union[PIL.Image.Image, List[PIL.Image.Image]], 
-        proprio : Union[np.ndarray], 
+        self,
+        side_image: Union[PIL.Image.Image, List[PIL.Image.Image]],
+        wrist_image : Union[PIL.Image.Image, List[PIL.Image.Image]],
+        proprio : Union[np.ndarray],
         action : Optional[np.ndarray] = None,
         abs_gripper_control=False, # ignore temporal essembling for gripper control
-        binary_gripper=False, # discretize the gripper control 
-        use_temporal=True, # temporal essembling 
+        binary_gripper=False, # discretize the gripper control
+        use_temporal=True, # temporal essembling
         teacher_forcing=False, # use ground truth action for prediction
     ):
         """
@@ -227,7 +228,7 @@ class ICRTWrapper(nn.Module):
             wrist_image (PIL.Image.Image or List[PIL.Image.Image]): wrist camera image
             proprio (np.ndarray): proprioceptive information
             action (np.ndarray): action information
-        """ 
+        """
         obs = self.prepare_observations(side_image, wrist_image, proprio, action)
         for k, v in obs.items():
             if v is not None:

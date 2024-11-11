@@ -327,13 +327,13 @@ def load_model(model_without_ddp, path):
     for key, value in checkpoint['model'].items():
         key = key.replace("llma", "llama")
         new_checkpoint[key] = value
-        
+
     missing_keys, unexpected_keys = model_without_ddp.load_state_dict(new_checkpoint, strict=False)
     actual_missing_keys = []
     for key in missing_keys:
-        if 'vision_encoder' in key or 'llama' in key:
-            continue
-        else:
+        # if 'vision_encoder' in key or 'llama' in key:
+        #     continue
+        # else:
             actual_missing_keys.append(key)
     print("Load checkpoint %s" % path)
     print("Missing keys: ", actual_missing_keys)
@@ -391,7 +391,7 @@ class DistributedSubEpochSampler(torch.utils.data.Sampler):
         self.shuffle = shuffle
         self.split_epoch = split_epoch
         self.seed = seed
-        
+
         self.epoch = 0
 
         self.num_samples = len(dataset) // (num_replicas * split_epoch)
@@ -416,7 +416,7 @@ class DistributedSubEpochSampler(torch.utils.data.Sampler):
 
     def set_epoch(self, epoch):
         self.epoch = epoch
-        
+
 class DistributedSubEpochLongSampler(torch.utils.data.Sampler):
     def __init__(self, dataset, num_replicas, rank, shuffle, eff_batch_size, split_epoch=1, seed=0):
         self.dataset = dataset
@@ -428,24 +428,24 @@ class DistributedSubEpochLongSampler(torch.utils.data.Sampler):
         self.epoch = 0
         self.num_samples = len(dataset) // (num_replicas * split_epoch) # number of samples per replica
         self.eff_batch_size = eff_batch_size
-        
+
     def __len__(self):
         return len(self.dataset) // (self.num_replicas * self.split_epoch)
-    
+
     def __iter__(self):
-        if self.shuffle: 
+        if self.shuffle:
             print("######### running distributed sub epoch sampler #########")
             # we interleave the indices from different task types
             g = torch.Generator()
             g.manual_seed(self.seed + self.epoch // self.split_epoch)
             indices_sets = []
             for i in range(len(self.dataset.type_indices_list[:-1])):
-                # put task trajectory in effective batch size sets 
+                # put task trajectory in effective batch size sets
                 cur_indices = torch.arange(self.dataset.type_indices_list[i], self.dataset.type_indices_list[i+1])
                 cur_indices = cur_indices[torch.randperm(len(cur_indices), generator=g)].tolist()
                 cur_indices = [cur_indices[i:i+self.eff_batch_size] for i in range(0, len(cur_indices), self.eff_batch_size) if i+self.eff_batch_size <= len(cur_indices)]
                 indices_sets.extend(cur_indices)
-            # shuffle the indices sets 
+            # shuffle the indices sets
             rng = np.random.default_rng(self.seed + self.epoch // self.split_epoch)
             rng.shuffle(indices_sets)
             indices = []
@@ -453,7 +453,7 @@ class DistributedSubEpochLongSampler(torch.utils.data.Sampler):
                 indices += indices_sets[i]
         else:
             indices = list(range(len(self.dataset)))
-        
+
         if self.split_epoch > 1:
             curr_epoch = self.epoch % self.split_epoch
             self.num_samples = len(indices) // (self.split_epoch * self.num_replicas)
@@ -461,10 +461,10 @@ class DistributedSubEpochLongSampler(torch.utils.data.Sampler):
         indices = indices[self.rank::self.num_replicas]
         self.num_samples = len(indices)
         return iter(indices)
-    
+
     def set_epoch(self, epoch):
         self.epoch = epoch
-        
+
 def download(url: str, root: str):
     os.makedirs(root, exist_ok=True)
     filename = os.path.basename(url)

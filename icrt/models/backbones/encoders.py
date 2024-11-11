@@ -101,16 +101,16 @@ def _create_vision_transformer(variant, pretrained=False, **kwargs):
 class VisionEncoder(nn.Module):
     def __init__(self, name, pretrained=True, global_pool='', finetune=False, lora_rank=8):
         """
-        Using timm vision encoder 
+        Using timm vision encoder
         by default, we do not pool visual features at this stage
         currently it only works with a single camera
 
-        Params: 
+        Params:
             finetune has a few options
                 1. False: we freeze the model
                 2. (int) > 0: we unfreeze the last n blocks
                 3. "all": we finetune the entire model
-                4. "lora": lora finetuning 
+                4. "lora": lora finetuning
         """
         super().__init__()
         self.name = name
@@ -130,7 +130,7 @@ class VisionEncoder(nn.Module):
             self.model = timm.create_model("vit_large_patch16_224", pretrained=False)
             ckpt = torch.load(name, map_location='cpu')
             # Extract encoder weights from the dust3r model
-            encoder_weights = ckpt['model']['patch_embed.proj.weight']            
+            encoder_weights = ckpt['model']['patch_embed.proj.weight']
             # Load encoder weights into the corresponding part
             self.model.patch_embed.proj.weight.data.copy_(encoder_weights)
         else:
@@ -140,7 +140,7 @@ class VisionEncoder(nn.Module):
             if isinstance(self.finetune, int):
                 self.unfreeze_last_n_blocks(self.finetune)
             elif self.finetune == "all":
-                self.unfreeze() 
+                self.unfreeze()
             elif self.finetune == "lora":
                 # enable training of all biases to sequeze more performance out
                 # https://github.com/microsoft/LoRA
@@ -156,7 +156,7 @@ class VisionEncoder(nn.Module):
         #     self.model.norm.weight.requires_grad = True
         #     self.model.norm.bias.requires_grad = True
 
-    def out_dim(self): 
+    def out_dim(self):
         return self.model.embed_dim
 
     def unfreeze_last_n_blocks(self, n):
@@ -204,16 +204,16 @@ class VisionEncoder(nn.Module):
 class VisionEncoderCNN(nn.Module):
     def __init__(self, name, pretrained=True, global_pool='', finetune=False, lora_rank=8):
         """
-        Using timm vision encoder 
+        Using timm vision encoder
         by default, we do not pool visual features at this stage
         currently it only works with a single camera
 
-        Params: 
+        Params:
             finetune has a few options
                 1. False: we freeze the model
                 2. (int) > 0: we unfreeze the last n blocks
                 3. "all": we finetune the entire model
-                4. "lora": lora finetuning 
+                4. "lora": lora finetuning
         """
         super().__init__()
         self.name = name
@@ -224,7 +224,7 @@ class VisionEncoderCNN(nn.Module):
         if self.finetune:
             self.model.train()
             if self.finetune == "all":
-                self.unfreeze() 
+                self.unfreeze()
             elif self.finetune == "lora":
                 # enable training of all biases to sequeze more performance out
                 # https://github.com/microsoft/LoRA
@@ -233,13 +233,13 @@ class VisionEncoderCNN(nn.Module):
             self.model.eval()
             self.freeze()
 
-    def out_dim(self): 
+    def out_dim(self):
         return self.model.num_features
 
     def unfreeze_last_n_blocks(self, n):
         # we unfreeze the last n blocks
         raise NotImplementedError("Not supported for CNN")
-    
+
     def unfreeze(self):
         # we unfreeze the model depends on finetune or not
         for param in self.model.parameters():
@@ -272,9 +272,9 @@ class VisionEncoderCNN(nn.Module):
 
 
 class AttentionPool(nn.Module):
-    """ 
+    """
     Attention pooling w/ latent query
-    modified from 
+    modified from
     https://github.com/huggingface/pytorch-image-models/blob/main/timm/layers/attention_pool.py
     """
     fused_attn: torch.jit.Final[bool]
@@ -307,7 +307,7 @@ class AttentionPool(nn.Module):
         self.scale = self.head_dim ** -0.5
         self.pool = pool_type
         self.fused_attn = use_fused_attn()
-        
+
         self.latent_dim = latent_dim or embed_dim
         self.latent_len = latent_len
         self.latent = nn.Parameter(torch.zeros(1, self.latent_len, embed_dim))
@@ -329,8 +329,8 @@ class AttentionPool(nn.Module):
 
         self.norm = norm_layer(out_features) if norm_layer is not None else nn.Identity()
         self.mlp = Mlp(
-            in_features=out_features, 
-            hidden_features=int(out_features * mlp_ratio), 
+            in_features=out_features,
+            hidden_features=int(out_features * mlp_ratio),
             out_features=out_features
         )
 
@@ -342,7 +342,7 @@ class AttentionPool(nn.Module):
                 trunc_normal_tf_(self.pos_embed, std=self.pos_embed.shape[1] ** -0.5)
             elif self.pos_embed_type == 'abs':
                 self.pos_embed = nn.Parameter(torch.tensor(
-                    get_1d_sincos_pos_embed_from_grid(self.in_features, np.arange(self.latent_len)), 
+                    get_1d_sincos_pos_embed_from_grid(self.in_features, np.arange(self.latent_len)),
                     requires_grad=False
                 ))
         trunc_normal_tf_(self.latent, std=self.latent_dim ** -0.5)
@@ -384,7 +384,7 @@ class AttentionPool(nn.Module):
         elif self.pool == '':
             pass # we return the whole sequence
         return x
-    
+
     def expand_forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         x is of dimension: B, T, (input_dim), C
@@ -396,7 +396,7 @@ class AttentionPool(nn.Module):
         x = x.view(B*T, input_dim, C)
         out = self.forward(x)
         return out.view(B, T, self.latent_len, self.out_features)
-    
+
     def combine_forward(self, visual_tokens : torch.Tensor, proprio_tokens : torch.Tensor) -> torch.Tensor:
         """
         visual_tokens are of dimension: B, T, num_tokens, C
@@ -409,7 +409,7 @@ class AttentionPool(nn.Module):
         tokens = torch.cat([visual_tokens, proprio_tokens], dim=1)
         return self.forward(tokens).view(B, T, self.latent_len, self.out_features)
 
-    def forward_visual(self, visual_tokens : torch.Tensor) -> torch.Tensor: 
+    def forward_visual(self, visual_tokens : torch.Tensor) -> torch.Tensor:
         """
         visual_tokens are of dimension: B, T, num_tokens, C
         output is B x T x latent_len x C
@@ -434,9 +434,9 @@ class AttentionPool(nn.Module):
 
 
 class MultiKVAttentionPool(nn.Module):
-    """ 
+    """
     Attention pooling w/ latent query and different key-value projections for different data
-    modified from 
+    modified from
     https://github.com/huggingface/pytorch-image-models/blob/main/timm/layers/attention_pool.py
     """
     fused_attn: torch.jit.Final[bool]
@@ -471,7 +471,7 @@ class MultiKVAttentionPool(nn.Module):
         self.pool = pool_type
         self.fused_attn = use_fused_attn()
         self.num_modalities = num_modalities
-        
+
         self.latent_dim = latent_dim or embed_dim
         self.latent_len = latent_len
         self.latent = nn.Parameter(torch.zeros(1, self.latent_len, embed_dim))
@@ -493,8 +493,8 @@ class MultiKVAttentionPool(nn.Module):
 
         self.norm = norm_layer(out_features) if norm_layer is not None else nn.Identity()
         self.mlp = Mlp(
-            in_features=out_features, 
-            hidden_features=int(out_features * mlp_ratio), 
+            in_features=out_features,
+            hidden_features=int(out_features * mlp_ratio),
             out_features=out_features
         )
 
@@ -506,7 +506,7 @@ class MultiKVAttentionPool(nn.Module):
                 trunc_normal_tf_(self.pos_embed, std=self.pos_embed.shape[1] ** -0.5)
             elif self.pos_embed_type == 'abs':
                 self.pos_embed = nn.Parameter(torch.tensor(
-                    get_1d_sincos_pos_embed_from_grid(self.in_features, np.arange(self.latent_len)), 
+                    get_1d_sincos_pos_embed_from_grid(self.in_features, np.arange(self.latent_len)),
                     requires_grad=False
                 ))
         trunc_normal_tf_(self.latent, std=self.latent_dim ** -0.5)
@@ -572,7 +572,7 @@ class MultiKVAttentionPool(nn.Module):
 
         return attn
 
-    
+
     def combine_forward(self, *modality_tokens):
         return self.forward(*modality_tokens)
 
