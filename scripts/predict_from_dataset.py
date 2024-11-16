@@ -12,6 +12,7 @@ import matplotlib.animation as animation
 from easydict import EasyDict
 from tqdm import trange
 
+from icrt.util.misc import get_franka_action_offset_values
 import robosuite.utils.transform_utils as T
 import robomimic.utils.obs_utils as ObsUtils
 
@@ -323,13 +324,19 @@ def main(args):
     eval_logger = EvalLogger(keys_to_log)
     log_filename = os.path.join(log_folder, f"eval_logs.csv")
 
-    with Timer() as t, VideoWriter(video_folder, True) as video_writer:
+    action_offset = None
+    if args.action_offset is not None:
+        # convert action_offset id to the corresponding action_offset value
+        action_offset = get_franka_action_offset_values(args.action_offset)
+
+    with Timer() as t, VideoWriter(video_folder, not args.no_save) as video_writer:
         env_args = {
             "bddl_file_name": os.path.join(
                 libero_bddl_folder, task.problem_folder, task.bddl_file
             ),
             "camera_heights": 224,
             "camera_widths": 224,
+            "action_offset": action_offset,
         }
         env_num = 1
         assert env_num == 1
@@ -377,7 +384,11 @@ def main(args):
             obs = [env.set_init_state(init_states_[0])]
             for _ in range(5):  # simulate the physics without any actions
                 # env.step(np.zeros((env_num, 7)))
-                env.step(np.zeros((7,)))
+                action = np.zeros((7,))
+                if action_offset is not None:
+                    assert action_offset.shape == (7,), f"action_offset shape must be (7,). Currently, it is: {action_offset.shape}"
+                    action = np.zeros((7,)) - action_offset
+                env.step(action)
 
             assert env_num == 1, "env_num must be 1 for now"
 
@@ -451,7 +462,8 @@ def main(args):
     eval_logger.add_kv("task_id", task_id)
     eval_logger.add_kv("n_eval", num_episodes)
     eval_logger.add_kv("success_rate", num_success / num_episodes)
-    eval_logger.save(log_filename)
+    if not args.no_save:
+        eval_logger.save(log_filename)
     print(f"Success rate: {num_success / num_episodes:.4f}")
     success_rate = num_success / num_episodes
     env.close()
@@ -464,6 +476,8 @@ if __name__ == '__main__':
     parser.add_argument("--task_name", type=str, required=True)
     parser.add_argument("--prompt_task_name", type=str, required=False, default=None)
     parser.add_argument("--n_eval", type=int, default=10)
+    parser.add_argument("--action_offset", type=int, default=None)
+    parser.add_argument("--no_save", action='store_true', help="(optional) do not save the video or logs")
     # change robot color to create domain mismatch
     parser.add_argument(
         "--change_robot_color",

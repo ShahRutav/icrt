@@ -253,6 +253,11 @@ class SequenceDataset(torch.utils.data.Dataset):
 
         # load the dataset
         self.shuffle_dataset(seed=0)
+        self.action_traj_noise = False
+        if dataset_config.action_traj_noise:
+            self.action_traj_noise = True
+            self.action_traj_noise_range = [(-0.09, -0.07), (-0.05, -0.03), (-0.01, 0.01), (0.03, 0.05), (0.07, 0.09)]
+            print("using action trajectory noise: ", self.action_traj_noise_range)
 
     def total_seq_length(self):
         total_seq_length = 0
@@ -558,6 +563,15 @@ class SequenceDataset(torch.utils.data.Dataset):
             prompt_mask, weight_mask = create_prompt_mask(action[...,0,-1],self.num_weighted_steps)
             prompt_mask = torch.from_numpy(prompt_mask).float()
             weight_mask = torch.from_numpy(weight_mask).float()
+        # dataset_cfg has action_traj_noise as true then add the same noise to all the steps.
+        if self.action_traj_noise:
+            # pick a range from the list of ranges by random sampling.
+            # add noise to first three dimensions of the action and rest all as zero.
+            noise_range = np.random.choice(range(len(self.action_traj_noise_range)))
+            noise_range = self.action_traj_noise_range[noise_range]
+            noise = np.random.uniform(noise_range[0], noise_range[1], 3)[None, None, :]
+            action[...,:3] += noise
+
         return {
             "observation": observation,
             "proprio": proprio,

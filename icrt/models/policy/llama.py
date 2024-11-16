@@ -184,7 +184,7 @@ class Attention(nn.Module):
 
         # scores = F.softmax(scores.float(), dim=-1).type_as(xq)
         return scores
-        
+
 
     def forward(self, x: torch.Tensor, start_pos: int, freqs_cis: torch.Tensor, mask: Optional[torch.Tensor]):
         bsz, seqlen, _ = x.shape
@@ -339,8 +339,8 @@ class Transformer(nn.Module):
     @torch.inference_mode()
     def forward_inference(self, seq: torch.Tensor, start_pos: int, mask: Optional[torch.Tensor] = None):
         _, seqlen, _ = seq.shape
-        if start_pos + seqlen > self.freqs_cis.shape[0]: 
-            # update positional embedding 
+        if start_pos + seqlen > self.freqs_cis.shape[0]:
+            # update positional embedding
             print(f"Updating positional embedding from length {self.freqs_cis.shape[0]} to length {self.freqs_cis.shape[0] * 2}")
             self.freqs_cis = precompute_freqs_cis(
                 self.params.dim // self.params.n_heads, self.freqs_cis.shape[0] * 2
@@ -379,7 +379,7 @@ class Transformer(nn.Module):
         seq: B, 2T-1, C
         """
         _, seqlen, _ = seq.shape
-        self.freqs_cis = self.freqs_cis.to(seq.device) 
+        self.freqs_cis = self.freqs_cis.to(seq.device)
         freqs_cis = self.freqs_cis[:seqlen]
 
         if mask is None:

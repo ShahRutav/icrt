@@ -25,6 +25,35 @@ from torch import inf
 import numpy as np
 from icrt.util.args import ExperimentConfig
 
+def get_franka_action_offset_values(offset_type):
+    # these represent the action offset values for the franka robot with increasing offset_type
+    assert offset_type in range(1, 29)
+    # each offset type has three values for x, y, z and rest four values are 0
+    # original: 80%; 0.01: 70%; 0.02: 40%; 0.06: 20%
+    base_val = 0.01
+    offset_values = {
+        1: [base_val, 0, 0, 0, 0, 0, 0],
+        2: [0, base_val, 0, 0, 0, 0, 0],
+        3: [0, 0, base_val, 0, 0, 0, 0],
+        4: [base_val, base_val, 0, 0, 0, 0, 0],
+        5: [base_val, 0, base_val, 0, 0, 0, 0],
+        6: [0, base_val, base_val, 0, 0, 0, 0],
+        7: [base_val, base_val, base_val, 0, 0, 0, 0],
+    }
+    # 8 to 14 are the same as 1 to 7 but with 0.02 offset
+    # 15 to 21 are the same as 1 to 7 but with 0.06 offset
+    # 22 to 28 are the same as 1 to 7 but with 0.04 offset
+    for i in range(8, 29):
+        if i < 15:
+            offset_values[i] = [val * 2 for val in offset_values[i-7]]
+        elif i < 22:
+            offset_values[i] = [val * 3 for val in offset_values[i-7]]
+        elif i < 29:
+            offset_values[i] = [val * 4 for val in offset_values[i-7]]
+    print(f"Offset values for offset type {offset_type}: {offset_values[offset_type]}")
+
+    return np.array(offset_values[offset_type])
+
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
     window or the global series average.

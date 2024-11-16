@@ -1,4 +1,5 @@
 import dataclasses
+from dataclasses import field
 from typing import Literal, Optional, Tuple, Union
 import enum
 import pathlib
@@ -51,6 +52,10 @@ class DatasetConfig:
 
     # use a fraction of the dataset by task (0.0 to 1.0)
     dataset_fraction : float = 1.0
+
+    # add action trajectory level action noise
+    action_traj_noise : bool = False
+    # action_traj_noise_range : list[(float, float)] = [(-0.09, -0.07), (-0.05, -0.03), (-0.01, 0.01), (0.03, 0.05), (0.07, 0.09)]
 
 @dataclasses.dataclass
 class VisionEncoderConfig:

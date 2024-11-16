@@ -220,6 +220,8 @@ class VisionEncoderCNN(nn.Module):
         self.pretrained = pretrained
         self.finetune = finetune
         kwargs = {"num_classes": 0}
+        # print all the default arguments
+        print(f"[timm info] using vision encoder {name}, pretrained: {pretrained}, global_pool: {global_pool}, finetune: {finetune}, lora_rank: {lora_rank}, kwargs: {kwargs}")
         self.model = timm.create_model(name, pretrained=pretrained, global_pool=global_pool, **kwargs)
         if self.finetune:
             self.model.train()

@@ -7,6 +7,8 @@ import numpy as np
 from copy import deepcopy
 from easydict import EasyDict
 
+from icrt.util.misc import get_franka_action_offset_values
+
 import robosuite.utils.transform_utils as T
 import robomimic.utils.tensor_utils as TensorUtils
 import robomimic.utils.file_utils as FileUtils
@@ -52,6 +54,7 @@ def extract_trajectory(
     actions,
     change_robot_color=False,
     change_obj_color=False,
+    action_offset=None,
     orig_obs=None,
 ):
     """
@@ -101,7 +104,10 @@ def extract_trajectory(
         obs = env.env._get_observations()
 
     for _ in range(5):
-        env.step(np.zeros((7,)))
+        action = np.zeros((7,))
+        if action_offset is not None:
+            action -= action_offset.squeeze()
+        env.step(action)
 
     traj = dict(
         obs=[],
@@ -192,12 +198,17 @@ def dataset_states_to_obs(args):
         initialize_obs_utils=True,
         seq_len=cfg.data.seq_len,
     )
+    action_offset = None
+    if args.action_offset is not None:
+        action_offset = get_franka_action_offset_values(args.action_offset)
+        action_offset = action_offset[None, :]
     env_args = {
         "bddl_file_name": os.path.join(
             get_libero_path("bddl_files"), task.problem_folder, task.bddl_file
         ),
         "camera_heights": args.camera_height,
         "camera_widths": args.camera_width,
+        "action_offset": action_offset.squeeze() if action_offset is not None else None,
     }
     env = OffScreenRenderEnv(**env_args)
     env.reset()
@@ -232,6 +243,9 @@ def dataset_states_to_obs(args):
         initial_state = dict(states=states[0])
         # extract obs, rewards, dones
         actions = dataset["data/{}/actions".format(ep)][()]
+        # if args.action_offset is not None: # comment this to remove see the effect of action offset without considering it.
+        #     assert len(actions.shape) == len(action_offset.shape), f"action offset shape does not match action shape {actions.shape} != {action_offset.shape}"
+        #     actions -= action_offset
         traj = extract_trajectory(
             env=env,
             initial_state=initial_state,
@@ -239,6 +253,7 @@ def dataset_states_to_obs(args):
             actions=actions,
             change_robot_color=args.change_robot_color,
             change_obj_color=args.change_obj_color,
+            action_offset=action_offset,
             orig_obs=dataset["data/{}/obs".format(ep)],
         )
 
@@ -362,6 +377,7 @@ if __name__ == "__main__":
         action='store_true',
         help="(optional) change robot color to create domain mismatch",
     )
+    parser.add_argument("--action_offset", type=int, default=None)
 
     args = parser.parse_args()
     dataset_states_to_obs(args)
