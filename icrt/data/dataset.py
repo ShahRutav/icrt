@@ -505,6 +505,7 @@ class SequenceDataset(torch.utils.data.Dataset):
         # if we are goal conditioned, we need to add the goal to the observation
         if self.goal_conditioned:
             #find the first eos position
+            # take first index of eos, not all of them
             eos_idx = np.where(eos.numpy() == 1)[0][0]
 
             # #find the first non zero observation

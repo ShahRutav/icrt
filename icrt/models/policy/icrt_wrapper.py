@@ -130,6 +130,13 @@ class ICRTWrapper(nn.Module):
             proprio (np.ndarray): proprioceptive information
             action (np.ndarray): action information
         """
+        if self.args.dataset_cfg.goal_conditioned:
+            side_image = side_image[-1:]
+            wrist_image = wrist_image[-1:]
+            proprio = proprio[-1:]
+            action = action[-1:]
+            print("Goal conditioned task. Only using the last observation.")
+
         demo_sequence = self.prepare_observations(side_image, wrist_image, proprio, action)
         self.reset()
         for k, v in demo_sequence.items():

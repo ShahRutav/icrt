@@ -35,12 +35,23 @@ from libero.lifelong.utils import (
 
 from libero.lifelong.main import get_task_embs
 
+def set_color(env, link_names, color):
+    for link_name in link_names:
+        geom_id = env.env.sim.model.geom_name2id(link_name)
+        geom_rgba = env.env.sim.model.geom_rgba[geom_id]
+        env.env.sim.model.geom_rgba[geom_id] = color
+        # env.env.sim.model.geom_rgba[geom_id] = [0.68, 0.85, 1.0, 1]  # pastel blue color with full opacity
+        # env.env.sim.model.geom_rgba[geom_id] = [1.0, 0.0, 0.0, 1]  # red color with full opacity
+        env.env.sim.model.geom_matid[geom_id] = 1
+    return env
+
 def extract_trajectory(
     env,
     initial_state,
     states,
     actions,
     change_robot_color=False,
+    change_obj_color=False,
     orig_obs=None,
 ):
     """
@@ -64,9 +75,31 @@ def extract_trajectory(
         if (name is not None) and (("robot" in name) or ('gripper' in name)):
             _link_names.append(name)
 
+    bowl_object_names, plate_object_names = [], []
+    for name in geom_names:
+        if (name is not None) and (("akita" in name)):
+            bowl_object_names.append(name)
+        if (name is not None) and (("cheese" in name)):
+            plate_object_names.append(name)
+    # pastel yellow_akita_bowl_color
+    akita_bowl_color = [0.98, 0.98, 0.82, 1]  # pastel yellow color with full opacity
+    # make the plate pastel grey in color
+    plate_color = [0.86, 0.86, 0.86, 1]
+    # make
+    color = [1.0, 0.0, 0.0, 1]  # red color with full opacity
+    # color = [0.68, 0.85, 1.0, 1]
+
     # load the initial state
     env.reset()
     obs = env.set_init_state(initial_state['states'])
+    if change_robot_color:
+        set_color(env, _link_names, color)
+        obs = env.env._get_observations()
+    if change_obj_color:
+        set_color(env, bowl_object_names, akita_bowl_color)
+        set_color(env, plate_object_names, plate_color)
+        obs = env.env._get_observations()
+
     for _ in range(5):
         env.step(np.zeros((7,)))
 
@@ -85,13 +118,12 @@ def extract_trajectory(
     for t in range(1, traj_len + 1):
         # change robot color to create domain mismatch
         if change_robot_color:
-            for link_name in _link_names:
-                geom_id = env.env.sim.model.geom_name2id(link_name)
-                geom_rgba = env.env.sim.model.geom_rgba[geom_id]
-                # env.env.sim.model.geom_rgba[geom_id] = [0.68, 0.85, 1.0, 1]  # Red color with full opacity
-                env.env.sim.model.geom_rgba[geom_id] = [1.0, 0.0, 0.0, 1]  # Red color with full opacity
-                env.env.sim.model.geom_matid[geom_id] = 1
-
+            set_color(env, _link_names, color)
+            obs = env.env._get_observations()
+        if change_obj_color:
+            set_color(env, bowl_object_names, akita_bowl_color)
+            set_color(env, plate_object_names, plate_color)
+            obs = env.env._get_observations()
 
         next_obs, _, _, _ = env.step(actions[t - 1])
 
@@ -205,7 +237,8 @@ def dataset_states_to_obs(args):
             initial_state=initial_state,
             states=states,
             actions=actions,
-            change_robot_color=False,
+            change_robot_color=args.change_robot_color,
+            change_obj_color=args.change_obj_color,
             orig_obs=dataset["data/{}/obs".format(ep)],
         )
 
@@ -318,14 +351,17 @@ if __name__ == "__main__":
         default=224,
         help="(optional) width of image observations",
     )
-    '''
     # change robot color to create domain mismatch
     parser.add_argument(
         "--change_robot_color",
         action='store_true',
         help="(optional) change robot color to create domain mismatch",
     )
-    '''
+    parser.add_argument(
+        "--change_obj_color",
+        action='store_true',
+        help="(optional) change robot color to create domain mismatch",
+    )
 
     args = parser.parse_args()
     dataset_states_to_obs(args)

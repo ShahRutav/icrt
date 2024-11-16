@@ -107,7 +107,7 @@ def main(args : ExperimentConfig):
         # data['proprio']: (512, 16, 10): (seq_length, timesteps, proprio_dim)
         # data['action']: (512, 16, 11): (seq_length, timesteps, action_dim)
         # data['prompt_mask']: (512) # this tells us what is part of the prompt and what is not; 1 if not part of prompt, 0 if part of prompt
-        # data['weight_mask']: (512) # this tells us what is part of the prompt and what is not; 1 if not part of prompt, 0 if part of prompt; last 4 values are surpisingly 0
+        # data['weight_mask']: (512)
 
 
 if __name__ == '__main__':

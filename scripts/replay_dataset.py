@@ -33,7 +33,6 @@ from libero.lifelong.utils import (
     NpEncoder,
     compute_flops,
 )
-from icrt.models.policy.icrt_wrapper import ICRTWrapper
 
 benchmark_map = {
     "libero_10": "LIBERO_10",
@@ -183,26 +182,6 @@ def get_data_from_h5(data, episode_name, resolution=(224, 224, 3), return_PIL_im
         "proprios": proprios
     }
 
-def get_robot_color(color_name):
-    color = None
-    if color_name == "red":
-        color = [1.0, 0.0, 0.0, 1]
-    elif color_name == "blue":
-        color = [0.68, 0.85, 1.0, 1]
-    else:
-        raise ValueError(f"Color {color_name} not supported")
-    return color
-
-def get_obj_color(color_name):
-    color = None
-    if color_name == "yellow_bowl":
-        color = [0.98, 0.98, 0.82, 1]
-    elif color_name == "grey_cheese":
-        color = [0.86, 0.86, 0.86, 1]
-    else:
-        raise ValueError(f"Color {color_name} not supported")
-    return color
-
 def get_prompt_data(task_name_prompt, resolution, args, index=4, color_name=None):
     checkpoint_path = args.ckpt_path
     train_yaml_path = args.train_yaml_path
@@ -225,42 +204,19 @@ def main(args):
     # color = [0.68, 0.85, 1.0, 1]
     # color = [1.0, 0.0, 0.0, 1]
     color_name = "red"
-    color = get_robot_color(color_name)
-
-    obj_color_name = "yellow_bowl"
-    akita_bowl_color = get_obj_color(obj_color_name)
-    obj_color_name = "grey_cheese"
-    cheese_box_color = get_obj_color(obj_color_name)
-    obj_color_name = "yellow_bowl_grey_cheese"
-
+    # color = get_robot_color(color_name)
 
     checkpoint_path = args.ckpt_path
     train_yaml_path = args.train_yaml_path
     vision_encoder_path = args.vision_encoder_path if args.vision_encoder_path is not None else '/home/rutavms/research/gaze/icrt/checkpoints/crossmae_rtx/cross-mae-rtx-vitb.pth'
-    icrt = ICRTWrapper(train_yaml_path, checkpoint_path, vision_encoder_path)
     resolution = (224, 224, 3)
 
     task_name_prompt = args.prompt_task_name if args.prompt_task_name is not None else args.task_name
     prompt_hdf5_color_name = None
-    if args.change_robot_color:
-        prompt_hdf5_color_name = color_name
-    if args.change_obj_color:
-        prompt_hdf5_color_name = obj_color_name
     prompt_side_images, prompt_wrist_images, prompt_proprios, prompt_actions = get_prompt_data(task_name_prompt, resolution, args, color_name=prompt_hdf5_color_name)
-    icrt.reset() # do not cache history for this example
-    icrt.prompt(
-        prompt_side_images,
-        prompt_wrist_images,
-        prompt_proprios,
-        prompt_actions,
-    )
 
     task_name = args.task_name
     dataset_path = f"/home/rutavms/data/icrt/libero_goal/{task_name}_demo_icrt.hdf5"
-    if args.change_robot_color:
-        dataset_path = dataset_path.replace("icrt.hdf5", f"icrt_{color_name}.hdf5")
-    if args.change_obj_color:
-        dataset_path = dataset_path.replace("icrt.hdf5", f"icrt_{obj_color_name}.hdf5")
     if False:
         data = h5py.File(dataset_path, "r")
         episode_name = f"task_{task_name}_demo_1"
@@ -281,13 +237,10 @@ def main(args):
             # side_images, wrist_images are PIL images
             # proprios: 1, 7
             # action: 1,
-            action = icrt(
-                side_images[i], wrist_images[i],
-                proprios[i:i+1],
-                action=action,
-                use_temporal=False,
-                teacher_forcing=True
-            )
+            action = prompt_actions[i]
+            # action = action.reshape(1, -1)
+            obs, reward, done, info = env.step(action)
+            obs = [obs]
             pred_actions.append(action)
 
             loss = l1_loss(torch.from_numpy(action.reshape(1,-1)), torch.from_numpy(actions[i].reshape(1,-1)))
@@ -317,7 +270,8 @@ def main(args):
     )
     print("")
     # get the parent folder of the checkpoint path and add videos
-    video_folder = os.path.join(os.path.dirname(checkpoint_path), f"videos_{task_name}"); os.makedirs(video_folder, exist_ok=True)
+    # video_folder = os.path.join(os.path.dirname(checkpoint_path), f"videos_{task_name}"); os.makedirs(video_folder, exist_ok=True)
+    video_folder = os.path.join(os.path.dirname(checkpoint_path), f"temp"); os.makedirs(video_folder, exist_ok=True)
     log_folder = os.path.join(os.path.dirname(checkpoint_path), f"logs"); os.makedirs(log_folder, exist_ok=True)
     keys_to_log = ["task_name", "prompt_task_name", "task_id", "n_eval", "ckpt", "success_rate"]
     eval_logger = EvalLogger(keys_to_log)
@@ -365,13 +319,6 @@ def main(args):
             print("indices: ", indices)
             init_states_ = init_states[indices]
             env.reset()
-            if args.change_robot_color:
-                set_color(env, _link_names, color)
-                obs = [env.env._get_observations()]
-            if args.change_obj_color:
-                set_color(env, bowl_object_names, akita_bowl_color)
-                set_color(env, cheese_box_object_names, cheese_box_color)
-                obs = [env.env._get_observations()]
 
             # obs = env.set_init_state(init_states_)
             obs = [env.set_init_state(init_states_[0])]
@@ -382,50 +329,24 @@ def main(args):
             assert env_num == 1, "env_num must be 1 for now"
 
             with torch.no_grad():
-                icrt.reset()
-                if icrt.args.dataset_cfg.goal_conditioned: # for goal conditioned, the goal image should be from the same trajectory
-                    prompt_side_images, prompt_wrist_images, prompt_proprios, prompt_actions = get_prompt_data(task_name_prompt, resolution, args, index=ep_idx, color_name=prompt_hdf5_color_name)
-                icrt.prompt(
-                    prompt_side_images,
-                    prompt_wrist_images,
-                    prompt_proprios,
-                    prompt_actions,
-                )
                 pred_actions = []
                 while steps < 600:
+                    if steps == len(prompt_actions):
+                        break
                     steps += 1
                     obs = preprocess_libero_obs(obs, cfg)
 
                     side_image = Image.fromarray(obs["observation/agentview_rgb"].reshape(224, 224, 3))
                     wrist_image = Image.fromarray(obs["observation/eye_in_hand_rgb"].reshape(224, 224, 3))
                     proprio = np.concatenate([obs["observation/cartesian_pose"], obs["observation/gripper_position"]], axis=-1)
-                    if steps == 1:
-                        action = None
-                    else:
-                        action = pred_actions[steps-2:steps-1]
-
-                    # import ipdb; ipdb.set_trace()
-                    action = icrt(
-                        side_image, wrist_image,
-                        proprio.reshape(1, -1),
-                        action=None,
-                        use_temporal=False,
-                        teacher_forcing=False,
-                    )
+                    action = prompt_actions[steps-1]
 
                     # action = action.reshape(1, -1)
                     obs, reward, done, info = env.step(action)
                     obs = [obs]
-                    if args.change_robot_color:
-                        set_color(env, _link_names, color)
-                        obs = [env.env._get_observations()]
-                    if args.change_obj_color:
-                        set_color(env, bowl_object_names, akita_bowl_color)
-                        set_color(env, cheese_box_object_names, cheese_box_color)
-                        obs = [env.env._get_observations()]
-                    video_writer.append_vector_obs(
-                        obs, dones, camera_name="agentview_image"
-                    )
+                    # video_writer.append_vector_obs(
+                    #     obs, dones, camera_name="agentview_image"
+                    # )
                     pred_actions.append(action)
                     success = env.check_success()
                     # print("Success: ", success)
@@ -445,13 +366,13 @@ def main(args):
     if args.change_obj_color:
         task_name = task_name + f"_{obj_color_name}"
         task_name_prompt = task_name_prompt + f"_{obj_color_name}"
-    eval_logger.add_kv("task_name", task_name)
-    eval_logger.add_kv("prompt_task_name", task_name_prompt)
-    eval_logger.add_kv("ckpt", os.path.basename(checkpoint_path))
-    eval_logger.add_kv("task_id", task_id)
-    eval_logger.add_kv("n_eval", num_episodes)
-    eval_logger.add_kv("success_rate", num_success / num_episodes)
-    eval_logger.save(log_filename)
+    # eval_logger.add_kv("task_name", task_name)
+    # eval_logger.add_kv("prompt_task_name", task_name_prompt)
+    # eval_logger.add_kv("ckpt", os.path.basename(checkpoint_path))
+    # eval_logger.add_kv("task_id", task_id)
+    # eval_logger.add_kv("n_eval", num_episodes)
+    # eval_logger.add_kv("success_rate", num_success / num_episodes)
+    # eval_logger.save(log_filename)
     print(f"Success rate: {num_success / num_episodes:.4f}")
     success_rate = num_success / num_episodes
     env.close()

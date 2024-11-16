@@ -331,9 +331,9 @@ def load_model(model_without_ddp, path):
     missing_keys, unexpected_keys = model_without_ddp.load_state_dict(new_checkpoint, strict=False)
     actual_missing_keys = []
     for key in missing_keys:
-        # if 'vision_encoder' in key or 'llama' in key:
-        #     continue
-        # else:
+        if 'vision_encoder' in key or 'llama' in key:
+            continue
+        else:
             actual_missing_keys.append(key)
     print("Load checkpoint %s" % path)
     print("Missing keys: ", actual_missing_keys)
