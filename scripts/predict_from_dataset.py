@@ -204,6 +204,13 @@ def get_obj_color(color_name):
         raise ValueError(f"Color {color_name} not supported")
     return color
 
+def get_action_offset_str(action_offset=None, args=None):
+    if args is not None:
+        action_offset = get_franka_action_offset_values(args.action_offset)
+    action_offset_str = [str(x) for x in list(action_offset.squeeze()[:3])]
+    action_offset_str = '_action_offset_' + '_'.join(action_offset_str)
+    return action_offset_str
+
 def get_prompt_data(task_name_prompt, resolution, args, index=4, color_name=None):
     checkpoint_path = args.ckpt_path
     train_yaml_path = args.train_yaml_path
@@ -212,12 +219,20 @@ def get_prompt_data(task_name_prompt, resolution, args, index=4, color_name=None
 
     task_name_prompt = args.prompt_task_name if args.prompt_task_name is not None else args.task_name
     # task_name_prompt = "open_the_middle_drawer_of_the_cabinet"
-    dataset_path = f"/home/rutavms/data/icrt/libero_goal/{task_name_prompt}_demo_icrt.hdf5"
+    base_dir = "/home/rutavms/data/icrt/libero_goal"
+    if args.action_offset:
+        action_offset_str = get_action_offset_str(args=args)
+        file_name = f"{task_name_prompt}_demo_" + action_offset_str + "_test.hdf5"
+    else:
+        file_name = f"{task_name_prompt}_demo_icrt.hdf5"
+
+    dataset_path = os.path.join(base_dir, file_name)
     # if args.change_robot_color or args.change_obj_color:
     #     dataset_path = dataset_path.replace("icrt.hdf5", f"icrt_{color_name}.hdf5")
     data = h5py.File(dataset_path, "r")
     episode_name = f"task_{task_name_prompt}_demo_{index}" # 49
-    print("selected episode: ", episode_name)
+    print(f"Reading data from: {dataset_path}")
+    print(f"selected episode: {episode_name}")
     obs_dict = get_data_from_h5(data, episode_name, resolution, return_PIL_images=True)
     prompt_side_images, prompt_wrist_images, prompt_proprios, prompt_actions = obs_dict["side_images"], obs_dict["wrist_images"], obs_dict["proprios"], obs_dict["actions"]
     return prompt_side_images, prompt_wrist_images, prompt_proprios, prompt_actions
@@ -257,12 +272,12 @@ def main(args):
     )
 
     task_name = args.task_name
-    dataset_path = f"/home/rutavms/data/icrt/libero_goal/{task_name}_demo_icrt.hdf5"
-    if args.change_robot_color:
-        dataset_path = dataset_path.replace("icrt.hdf5", f"icrt_{color_name}.hdf5")
-    if args.change_obj_color:
-        dataset_path = dataset_path.replace("icrt.hdf5", f"icrt_{obj_color_name}.hdf5")
     if False:
+        dataset_path = f"/home/rutavms/data/icrt/libero_goal/{task_name}_demo_icrt.hdf5"
+        if args.change_robot_color:
+            dataset_path = dataset_path.replace("icrt.hdf5", f"icrt_{color_name}.hdf5")
+        if args.change_obj_color:
+            dataset_path = dataset_path.replace("icrt.hdf5", f"icrt_{obj_color_name}.hdf5")
         data = h5py.File(dataset_path, "r")
         episode_name = f"task_{task_name}_demo_1"
         print("selected episode: ", episode_name)
@@ -322,8 +337,16 @@ def main(args):
     log_folder = os.path.join(os.path.dirname(checkpoint_path), f"logs"); os.makedirs(log_folder, exist_ok=True)
     keys_to_log = ["task_name", "prompt_task_name", "task_id", "n_eval", "ckpt", "success_rate"]
     eval_logger = EvalLogger(keys_to_log)
-    log_filename = os.path.join(log_folder, f"eval_logs.csv")
+    log_filename = "eval_logs.csv"
+    if args.change_robot_color:
+        log_filename = log_filename.replace(".csv", f"_{color_name}.csv")
+    if args.change_obj_color:
+        log_filename = log_filename.replace(".csv", f"_{obj_color_name}.csv")
+    if args.action_offset:
+        action_offset_str = get_action_offset_str(args=args)
+        log_filename = log_filename.replace(".csv", action_offset_str + ".csv")
 
+    log_filename = os.path.join(log_folder, log_filename)
     action_offset = None
     if args.action_offset is not None:
         # convert action_offset id to the corresponding action_offset value

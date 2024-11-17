@@ -27,32 +27,20 @@ from icrt.util.args import ExperimentConfig
 
 def get_franka_action_offset_values(offset_type):
     # these represent the action offset values for the franka robot with increasing offset_type
-    assert offset_type in range(1, 29)
+    assert offset_type in range(1, 10+2)
     # each offset type has three values for x, y, z and rest four values are 0
     # original: 80%; 0.01: 70%; 0.02: 40%; 0.06: 20%
-    base_val = 0.01
-    offset_values = {
-        1: [base_val, 0, 0, 0, 0, 0, 0],
-        2: [0, base_val, 0, 0, 0, 0, 0],
-        3: [0, 0, base_val, 0, 0, 0, 0],
-        4: [base_val, base_val, 0, 0, 0, 0, 0],
-        5: [base_val, 0, base_val, 0, 0, 0, 0],
-        6: [0, base_val, base_val, 0, 0, 0, 0],
-        7: [base_val, base_val, base_val, 0, 0, 0, 0],
-    }
-    # 8 to 14 are the same as 1 to 7 but with 0.02 offset
-    # 15 to 21 are the same as 1 to 7 but with 0.06 offset
-    # 22 to 28 are the same as 1 to 7 but with 0.04 offset
-    for i in range(8, 29):
-        if i < 15:
-            offset_values[i] = [val * 2 for val in offset_values[i-7]]
-        elif i < 22:
-            offset_values[i] = [val * 3 for val in offset_values[i-7]]
-        elif i < 29:
-            offset_values[i] = [val * 4 for val in offset_values[i-7]]
-    print(f"Offset values for offset type {offset_type}: {offset_values[offset_type]}")
+    train_offset_values = [-0.08, -0.04, 0.0, 0.04, 0.08]
+    val_offset_values = [-0.06, -0.02, 0.02, 0.06, 0.10, -0.10]
 
-    return np.array(offset_values[offset_type])
+    # add offset values as val,val,val,0,0,0,0. val is from train_offset_values if offset_type < 6 else val is from val_offset_values
+    offset_values = []
+    if offset_type < 6:
+        offset_values = [train_offset_values[offset_type-1], train_offset_values[offset_type-1], train_offset_values[offset_type-1], 0, 0, 0, 0]
+    else:
+        offset_values = [val_offset_values[offset_type-6], val_offset_values[offset_type-6], val_offset_values[offset_type-6], 0, 0, 0, 0]
+
+    return np.array(offset_values)
 
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a

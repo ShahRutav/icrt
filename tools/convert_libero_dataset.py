@@ -226,6 +226,10 @@ def dataset_states_to_obs(args):
         demos = demos[:args.n]
 
     # output file in same directory as input file
+    if args.action_offset is not None:
+        action_offset_str = [str(x) for x in list(action_offset.squeeze()[:3])]
+        action_offset_str = '_action_offset_' + '_'.join(action_offset_str)
+        args.output_name = action_offset_str + '_' + args.output_name
     output_path = os.path.join(base_dataset_path, benchmark.get_task_demonstration(args.task_id)[:-5] + '_' + args.output_name)
     f_out = h5py.File(output_path, "w")
     # data_grp = f_out.create_group("data")
@@ -243,9 +247,9 @@ def dataset_states_to_obs(args):
         initial_state = dict(states=states[0])
         # extract obs, rewards, dones
         actions = dataset["data/{}/actions".format(ep)][()]
-        # if args.action_offset is not None: # comment this to remove see the effect of action offset without considering it.
-        #     assert len(actions.shape) == len(action_offset.shape), f"action offset shape does not match action shape {actions.shape} != {action_offset.shape}"
-        #     actions -= action_offset
+        if args.action_offset is not None: # comment this to remove see the effect of action offset without considering it.
+            assert len(actions.shape) == len(action_offset.shape), f"action offset shape does not match action shape {actions.shape} != {action_offset.shape}"
+            actions -= action_offset
         traj = extract_trajectory(
             env=env,
             initial_state=initial_state,
