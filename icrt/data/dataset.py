@@ -492,7 +492,7 @@ class SequenceDataset(torch.utils.data.Dataset):
         proprio = self.helper_load_proprio(start_end_epi) # (seq_length + num_pred_steps - 1, proprio_dim)
         action = self.helper_load_action(start_end_epi) # (seq_length + num_pred_steps - 1, proprio_dim)
         # concatenate eos to action
-        action = torch.cat([action, eos[:, None]], dim=-1) # (seq_length, action_dim)
+        action = torch.cat([action, eos[:, None]], dim=-1) # (seq_length, action_dim) # appends 0.0 for not eos and 1.0 for eos
 
         # process action and proprio so that they are multi step prediction
         proprio = self.convert_multi_step(proprio, eos)[:self.seq_length] # (seq_length, num_pred_steps, proprio_dim)

@@ -763,6 +763,7 @@ class ICRT(nn.Module):
         #     )
         self.forward_inference(prompt_sequences, self.start_pos)
         self.start_pos += prompt_len
+        print(f"Prompted the model with {prompt_len} steps. Current position: {self.start_pos}")
         self.first_obs = True
 
     @torch.inference_mode()

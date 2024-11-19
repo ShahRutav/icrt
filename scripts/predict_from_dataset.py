@@ -262,14 +262,27 @@ def main(args):
         prompt_hdf5_color_name = color_name
     if args.change_obj_color:
         prompt_hdf5_color_name = obj_color_name
-    prompt_side_images, prompt_wrist_images, prompt_proprios, prompt_actions = get_prompt_data(task_name_prompt, resolution, args, color_name=prompt_hdf5_color_name)
     icrt.reset() # do not cache history for this example
-    icrt.prompt(
-        prompt_side_images,
-        prompt_wrist_images,
-        prompt_proprios,
-        prompt_actions,
-    )
+    if args.n_prompt > 1:
+        prompt_data = [get_prompt_data(task_name_prompt, resolution, args, index=i, color_name=prompt_hdf5_color_name) for i in range(args.n_prompt)]
+        prompt_side_images, prompt_wrist_images, prompt_proprios, prompt_actions = map(
+            lambda x: np.concatenate(x, axis=0), zip(*prompt_data)
+        )
+        icrt.prompt(
+            prompt_side_images,
+            prompt_wrist_images,
+            prompt_proprios,
+            prompt_actions,
+        )
+    else:
+        prompt_side_images, prompt_wrist_images, prompt_proprios, prompt_actions = get_prompt_data(task_name_prompt, resolution, args, color_name=prompt_hdf5_color_name)
+        icrt.prompt(
+            prompt_side_images,
+            prompt_wrist_images,
+            prompt_proprios,
+            prompt_actions,
+        )
+
 
     task_name = args.task_name
     if False:
@@ -345,6 +358,8 @@ def main(args):
     if args.action_offset:
         action_offset_str = get_action_offset_str(args=args)
         log_filename = log_filename.replace(".csv", action_offset_str + ".csv")
+    if args.n_prompt > 1:
+        log_filename = log_filename.replace(".csv", f"_n_prompt_{args.n_prompt}.csv")
 
     log_filename = os.path.join(log_folder, log_filename)
     action_offset = None
@@ -501,6 +516,7 @@ if __name__ == '__main__':
     parser.add_argument("--n_eval", type=int, default=10)
     parser.add_argument("--action_offset", type=int, default=None)
     parser.add_argument("--no_save", action='store_true', help="(optional) do not save the video or logs")
+    parser.add_argument("--n_prompt", type=int, default=1)
     # change robot color to create domain mismatch
     parser.add_argument(
         "--change_robot_color",

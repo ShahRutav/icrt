@@ -27,11 +27,11 @@ from icrt.util.args import ExperimentConfig
 
 def get_franka_action_offset_values(offset_type):
     # these represent the action offset values for the franka robot with increasing offset_type
-    assert offset_type in range(1, 10+2)
+    assert offset_type in range(1, 10+2+4+4)
     # each offset type has three values for x, y, z and rest four values are 0
     # original: 80%; 0.01: 70%; 0.02: 40%; 0.06: 20%
     train_offset_values = [-0.08, -0.04, 0.0, 0.04, 0.08]
-    val_offset_values = [-0.06, -0.02, 0.02, 0.06, 0.10, -0.10]
+    val_offset_values = [-0.06, -0.02, 0.02, 0.06, 0.10, -0.10, 0.15, -0.15, 0.20, -0.20, 0.30, -0.30, 0.40, -0.40]
 
     # add offset values as val,val,val,0,0,0,0. val is from train_offset_values if offset_type < 6 else val is from val_offset_values
     offset_values = []
