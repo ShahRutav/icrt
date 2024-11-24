@@ -1,0 +1,86 @@
+!!python/object:icrt.util.args.ExperimentConfig
+dataset_cfg: !!python/object:icrt.util.args.DatasetConfig
+  action_noise: 0.0
+  action_traj_noise: false
+  dataset_fraction: 1.0
+  dataset_json: config/dataset_config_calvin.json
+  goal_conditioned: false
+  non_overlapping: false
+  num_repeat_traj: 1
+  num_weighted_steps: 30
+  proprio_noise: 0.005
+  rebalance_tasks: true
+  shuffle_repeat_traj: true
+  skip_step: false
+  sort_by_lang: true
+  task_barrier: true
+  task_names: null
+  vision_aug: true
+device: cuda
+dist_on_itp: false
+dist_url: env://
+load_config: null
+local_rank: -1
+logging_cfg: !!python/object:icrt.util.args.LoggingConfig
+  log_dir: ./output
+  log_name: null
+  output_dir: ./output
+model_cfg: !!python/object:icrt.util.args.ModelConfig
+  policy_cfg: !!python/object:icrt.util.args.PolicyConfig
+    adapter_mlp_ratio: 4.0
+    adapter_num_heads: 8
+    camera_pos_emb: false
+    decoder_pred_head: mlp
+    kl_div_loss: false
+    llama_ckpt_dir: /home/mfu/checkpoints/llama-2/llama-2-7b
+    load_llama: true
+    lora_layer_idxs: null
+    lora_rank: 4
+    loss_w_action: 1.0
+    modality_pos_emb: false
+    multikv_attn_pool: false
+    no_prompt_loss: false
+    num_inference_diffusion_steps: null
+    num_train_diffusion_steps: null
+    phase: pretrain
+    pred_action_only: true
+    pretrained_path: null
+    remove_proprio: false
+    scale_loss: 1.0
+    scratch_llama_config: null
+    separate_camera_adapter: true
+    step_weight: 1.0
+  vision_encoder_cfg: !!python/object:icrt.util.args.VisionEncoderConfig
+    vision_encoder: vit_base_patch16_224.mae
+    vision_lora: false
+    vision_lora_rank: 8
+    vision_nonpretrained: false
+    vision_unfreeze_all: false
+    vision_unfreeze_last_n: 0
+optimizer_cfg: !!python/object:icrt.util.args.OptimizerConfig
+  blr: 0.001
+  lr: 0.0005
+  min_lr: 0.0
+  warmup_epochs: 40
+  weight_decay: 0.01
+shared_cfg: !!python/object:icrt.util.args.SharedConfig
+  batch_size: 1
+  num_cameras: 2
+  num_pred_steps: 16
+  num_stages: 1
+  resume: null
+  rot_6d: true
+  save_every: 5
+  scale_action: null
+  seed: 0
+  seq_length: 512
+  split_epoch: 1
+  start_epoch: 0
+  use_delta_action: false
+train: true
+trainer_cfg: !!python/object:icrt.util.args.TrainerConfig
+  accum_iter: 8
+  epochs: 400
+  num_workers: 20
+  pin_memory: true
+world_size: 1

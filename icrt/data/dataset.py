@@ -604,7 +604,7 @@ class SequenceDataset(torch.utils.data.Dataset):
 
     def helper_load_proprio(self, start_end_epi):
         """
-        Load proprioception data from the dataset
+        load proprioception data from the dataset
         """
 
         # load proprioception data
@@ -637,7 +637,7 @@ class SequenceDataset(torch.utils.data.Dataset):
             proprio[self.proprio_keys[0]] = ret
         else:
             if rot.shape[1] == 3:
-                # convert to quaternion (only happens for droid, which uses XYZ as the rotation format)
+                # convert to quaternion (only happens for droid, which uses xyz as the rotation format)
                 rot = euler_to_quat(rot)
                 # update the proprio
                 ret = np.concatenate([ret[:, :3], rot], axis=-1)
@@ -649,7 +649,7 @@ class SequenceDataset(torch.utils.data.Dataset):
 
     def helper_load_action(self, start_end_epi):
         """
-        Load action data from the dataset
+        load action data from the dataset
         """
         action = {}
         for k in self.action_keys:
@@ -743,3 +743,324 @@ class SequenceDataset(torch.utils.data.Dataset):
             else:
                 raise ValueError("Unknown demo type")
         return data
+
+# class PlayDataset(SequenceDataset):
+class PlayDataset(torch.utils.data.Dataset):
+    def __init__(
+        self,
+        dataset_config : DatasetConfig,
+        shared_config : SharedConfig,
+        vision_transform : transforms.Compose,
+        split_file : str = None, # path to the train val split file (json)
+        no_aug_vision_transform : transforms.Compose = None, # this is for wrist camera in particular
+        split : str = "train",
+    ):
+        # dataset_json consists of the names of the setup to consider for play dataset
+        self.dataset_config = dataset_config
+        self.split = split
+        self.split_file = split_file
+        self.vision_transform = vision_transform
+        self.no_aug_vision_transform = no_aug_vision_transform
+
+
+        dataset_json = load_json(dataset_config.dataset_json)
+        dataset_paths = dataset_json["dataset_path"]
+        # read the env variable CALVIN_ROOT
+        calvin_root = os.getenv("CALVIN_DATAROOT")
+        extension = "training" if split == "train" else "validation"
+
+        # create the base directories for the datasets
+        self.dataset_paths = [os.path.join(calvin_root, dataset_path, extension) for dataset_path in dataset_paths]
+
+        self._indices_list = []
+        for _path in self.dataset_paths:
+            # gather scene_info.npy
+            scene_info_path = os.path.join(_path, "scene_info.npy")
+            indices = next(iter(np.load(scene_info_path, allow_pickle=True).item().values()))
+            indices = list(range(indices[0], indices[1] + 1))
+            self._indices_list.append(indices)
+
+        self.image_keys = dataset_json["image_keys"]
+        self.proprio_keys = dataset_json["proprio_keys"]
+        self.action_keys = dataset_json["action_keys"]
+
+
+        # define sequence length
+        self.seq_length = shared_config.seq_length
+
+        self.goal_conditioned = dataset_config.goal_conditioned
+        self.sort_by_lang = dataset_config.sort_by_lang
+
+        # define rotation format
+        self.rot_6d = shared_config.rot_6d
+        # assert self.rot_6d == False, "PlayDataset does not support rot_6d"
+
+        # non overlapping subsequence
+        self.non_overlapping : Union[bool, int] = dataset_config.non_overlapping
+
+        # define use delta action flag
+        self.use_delta_action = shared_config.use_delta_action
+        assert self.use_delta_action == False, "PlayDataset does not support use_delta_action"
+
+        self.proprio_noise = dataset_config.proprio_noise
+        self.action_noise = dataset_config.action_noise
+
+        # vision transform
+        # we do not need normalization, see get_item
+        if vision_transform is not None:
+            self.vision_transform = transforms.Compose([t for t in vision_transform.transforms if not isinstance(t, transforms.ToTensor) and not isinstance(t, transforms.ColorJitter)])
+        else:
+            print("warning: vision transforms are not defined. Using default transforms.")
+            self.vision_transform = transforms.Compose([
+                transforms.Resize(size=248, max_size=None, interpolation=transforms.InterpolationMode.BICUBIC, antialias='warn'), # kept consistent with default
+                transforms.CenterCrop(size=224),
+                transforms.Normalize(mean=torch.tensor([0.4850, 0.4560, 0.4060]), std=torch.tensor([0.2290, 0.2240, 0.2250]))
+            ])
+
+        if no_aug_vision_transform is not None:
+            self.no_aug_vision_transform = transforms.Compose([t for t in no_aug_vision_transform.transforms if not isinstance(t, transforms.ToTensor) and not isinstance(t, transforms.ColorJitter)])
+        else:
+            self.no_aug_vision_transform = self.vision_transform
+        print("vision transforms")
+        print(self.vision_transform)
+
+        if dataset_config.vision_aug:
+            self.vision_aug = True
+            self.contrast_range = [0.8, 1.2]
+            self.brightness_range = [-0.1, 0.1]
+            print("using numeric brightness and contrast augmentation")
+            print("contrast range: ", self.contrast_range)
+            print("brightness range: ", self.brightness_range)
+        else:
+            self.vision_aug = False
+
+        # change prediction to be k steps
+        self.num_pred_steps = shared_config.num_pred_steps
+        assert self.num_pred_steps >= 1, "Number of prediction steps must be at least 1"
+        print("Number of prediction steps: ", self.num_pred_steps)
+
+    def __len__(self):
+        data_length = sum([len(indices) for indices in self._indices_list])
+        data_length = data_length - self.seq_length - self.num_pred_steps + 1
+
+        if self.non_overlapping:
+            if isinstance(self.non_overlapping, bool):
+                new_data_length = data_length // self.seq_length
+            else:
+                new_data_length = data_length // self.non_overlapping
+            data_length = new_data_length
+
+        return data_length
+
+    def _get_subsequence(self, index):
+        # find the dataset index
+        dataset_index = None
+        for i, indices in enumerate(self._indices_list):
+            if index < len(indices):
+                dataset_index = i
+                break
+            index -= len(indices)
+        # generate the subsequence range
+        start_index = self._indices_list[dataset_index][index]
+        end_index = start_index + self.seq_length + self.num_pred_steps - 1
+        dataset_path = self.dataset_paths[dataset_index]
+        state_paths = [os.path.join(dataset_path, f"episode_{ind:07d}.npz") for ind in range(start_index, end_index)]
+        subsequence = []
+        for state_path in state_paths:
+            with np.load(state_path) as f:
+                data = {k: f[k] for k in f.files}
+            subsequence.append(data)
+        return subsequence
+
+    def __getitem__(self, index):
+        # need to handle non_overlapping
+        # handle rot_6d is True
+        # number of prediction steps and augmentations (image, proprio, action)
+        if self.non_overlapping:
+            if isinstance(self.non_overlapping, bool):
+                index = index * self.seq_length
+            else:
+                index = index * self.non_overlapping
+
+        subseq = self._get_subsequence(index)
+
+        proprio = self.helper_load_proprio(subseq) # (seq_length + num_pred_steps - 1, proprio_dim)
+        action = self.helper_load_action(subseq) # (seq_length + num_pred_steps - 1, proprio_dim)
+
+        # process action and proprio so that they are multi step prediction
+        proprio = self.convert_multi_step(proprio)[:self.seq_length] # (seq_length, num_pred_steps, proprio_dim)
+        action = self.convert_multi_step(action)[:self.seq_length] # (seq_length, num_pred_steps, action_dim)
+        # add zeros to last dimension of action as fake eos
+        action = torch.cat([action, torch.zeros_like(action[...,0:1])], dim=-1)
+
+        if self.use_delta_action:
+            if not self.rot_6d:
+                print("Warning: use_delta_action is set to True, but rot_6d is set to False. This is not supported.")
+            else:
+                action = convert_delta_action(action.numpy(), proprio.numpy())
+                action = torch.from_numpy(action).float()
+
+        observation = self.helper_load_image(subseq)
+
+        # prompt_mask, weight_mask = create_prompt_mask(action[...,0,-1], self.num_weighted_steps)
+        weight_mask = torch.ones(observation.shape[0]) # does not matter
+        prompt_mask = torch.ones(observation.shape[0]) # if 1 then not prompt and will be used for training
+
+        return {
+            "observation": observation,
+            "proprio": proprio,
+            "action": action,
+            "prompt_mask": prompt_mask,
+            "weight_mask": weight_mask
+        }
+
+    def helper_load_proprio(self, subseq):
+        """
+        load proprioception data from the dataset
+        """
+
+        # load proprioception data
+        proprio = {}
+        gripper_state = None
+        for k in self.proprio_keys:
+            # take first 6 elements and the lsat element
+            # data = [np.concatenate([s[k][:6], s[k][-1:]], axis=-1)[None, :] for s in subseq]
+            data = [s[k][None, :6] for s in subseq]
+            proprio[k] = np.concatenate(data, axis=0)
+            if k == "robot_obs":
+                gripper_state = [s[k][None, -1:] for s in subseq]
+                gripper_state = np.concatenate(gripper_state, axis=0)
+
+        ret = proprio[self.proprio_keys[0]]
+
+        if self.proprio_noise > 0:
+            # adding noise to proprio
+            ret += np.random.normal(0, self.proprio_noise, ret.shape)
+            if ret.shape[1] == 7:
+                # normalize the quaternion
+                ret[:, 3:] /= np.linalg.norm(ret[:, 3:], axis=-1, keepdims=True)
+
+        rot = ret[:, 3:]
+        # deal with rot_6d
+        if self.rot_6d:
+            if rot.shape[1] == 4:
+                # robomimic dataset has format wxyz
+                rot = quat_to_rot_6d(rot)
+            elif rot.shape[1] == 3:
+                rot = euler_to_rot_6d(rot)
+            ret = np.concatenate([ret[:, :3], rot], axis=-1)
+            proprio[self.proprio_keys[0]] = ret
+        else:
+            if rot.shape[1] == 3:
+                # convert to quaternion (only happens for droid, which uses xyz as the rotation format)
+                rot = euler_to_quat(rot)
+                # update the proprio
+                ret = np.concatenate([ret[:, :3], rot], axis=-1)
+                proprio[self.proprio_keys[0]] = ret
+        proprio_vec = np.concatenate([proprio[k] for k in self.proprio_keys], axis=-1)
+        # add the gripper state
+        proprio_vec = np.concatenate([proprio_vec, gripper_state], axis=-1)
+        proprio_vec = torch.from_numpy(proprio_vec).float()
+        return proprio_vec
+
+    def helper_load_action(self, subseq):
+        """
+        load action data from the dataset
+        """
+        action = {}
+        for k in self.action_keys:
+            data = [s[k][None, :6] for s in subseq]
+            action[k] = np.concatenate(data, axis=0)
+            if k == "actions":
+                # concatenate the gripper action
+                gripper_action = [s[k][None, -1:] for s in subseq]
+                gripper_action = np.concatenate(gripper_action, axis=0)
+
+        if self.action_noise > 0:
+            # add noise to the action
+            ret = action[self.action_keys[0]]
+            ret += np.random.normal(0, self.action_noise, ret.shape)
+            action[self.action_keys[0]] = ret
+
+        if self.rot_6d:
+            ret = action[self.action_keys[0]]
+            rot = ret[:, 3:]
+            rot = euler_to_rot_6d(rot)
+            ret = np.concatenate([ret[:, :3], rot], axis=-1)
+            action[self.action_keys[0]] = ret
+
+        action_vec = np.concatenate([action[k] for k in self.action_keys], axis=-1)
+        action_vec = np.concatenate([action_vec, gripper_action], axis=-1)
+        action_vec = torch.from_numpy(action_vec).float()
+        return action_vec
+
+    def convert_multi_step(self, data : torch.Tensor) -> torch.Tensor:
+        """Convert the data for multi step prediction
+
+        Args:
+            action (torch.Tensor): the action to convert, of shape (seq_length, dim)
+
+        Returns:
+            torch.Tensor: the converted action, of shape (seq_length, num_pred_steps, dim)
+        """
+        if self.num_pred_steps == 1:
+            return data.unsqueeze(1)
+
+        data_chunked = [convert_multi_step(data, self.num_pred_steps)] # convert to multi step
+        return torch.cat(data_chunked, dim=0)
+
+    def helper_load_image(self, start_end_epi):
+        """
+        Load image data from the dataset
+        """
+        image = {}
+        dtype = None
+        for k in self.image_keys:
+            data = []
+
+            subsequence = [s[k][None] for s in start_end_epi]
+            subsequence = np.concatenate(subsequence, axis=0)[:self.seq_length]
+            if dtype is None:
+                dtype = subsequence.dtype
+                if dtype == 'uint8':
+                    norm = 255.0
+                else:
+                    norm = 1.0
+            subsequence = torch.from_numpy(subsequence / norm)
+            # data aug for brightness and contrast
+            if self.vision_aug:
+                contrast = np.random.uniform(self.contrast_range[0], self.contrast_range[1])
+                brightness = np.random.uniform(self.brightness_range[0], self.brightness_range[1])
+                subsequence = contrast * subsequence + brightness
+
+            # permute from T, H, W, C to T, C, H, W
+            subsequence = subsequence.permute(0, 3, 1, 2)
+            # transform each subsequence independently
+            if "wrist" in k or "hand" in k:
+                subsequence = self.no_aug_vision_transform(subsequence).float()
+            else:
+                subsequence = self.vision_transform(subsequence).float()
+
+            data.append(subsequence)
+
+            image[k] = torch.cat(data, dim=0) # concat on the time axis
+
+        image_vec = torch.stack([image[k] for k in self.image_keys], dim=1).float()
+        return image_vec
+
+    def save_split(self, path : str):
+        """
+            Not implemented for PlayDataset
+        """
+        pass
+
+    def shuffle_dataset(self, seed=0):
+        """
+        Shuffle the dataset according to the seed
+        """
+        rng = np.random.RandomState(seed=seed)
+        # shuffle the permutation of the episodes
+        indices = rng.permutation(len(self._indices_list))
+        # convert the indices to the list of indices
+        self._indices_list = [self._indices_list[i] for i in indices]
+        return

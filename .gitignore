@@ -165,3 +165,6 @@ test_outputs/
 wandb/
 
 checkpoints/
+temp/*
+experiments/*
+output_dir/*

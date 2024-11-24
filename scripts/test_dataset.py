@@ -1,4 +1,5 @@
 import h5py
+from tqdm import tqdm
 from pathlib import Path
 import datetime
 import json
@@ -15,7 +16,7 @@ from torch.utils.tensorboard import SummaryWriter
 
 import timm
 from timm.data.loader import MultiEpochsDataLoader
-from icrt.data.dataset import SequenceDataset
+from icrt.data.dataset import SequenceDataset, PlayDataset
 
 import icrt.util.misc as misc
 from icrt.util.misc import NativeScalerWithGradNormCount as NativeScaler
@@ -28,8 +29,8 @@ def main(args : ExperimentConfig):
     # Loading data config
     data_cfg = json.load(open(args.dataset_cfg.dataset_json, 'r'))
 
-    hdf5_file = h5py.File(data_cfg['dataset_path'][0], 'r')
-    print("Keys: %s" % hdf5_file.keys())
+    # hdf5_file = h5py.File(data_cfg['dataset_path'][0], 'r')
+    # print("Keys: %s" % hdf5_file.keys())
     # hdf5_file.keys(): episode names
     # hdf5_file['episode_0'].keys():
     # ['action', 'discount', 'is_first', 'is_last', 'is_terminal', 'language_embedding', 'language_embedding_2', 'language_embedding_3', 'language_instruction', 'language_instruction_2', 'language_instruction_3', 'observation', 'reward']>
@@ -83,31 +84,53 @@ def main(args : ExperimentConfig):
     # print(optimizer)
     loss_scaler = NativeScaler()
 
-    dataset_train = SequenceDataset(
-        dataset_config=args.dataset_cfg,
-        shared_config=args.shared_cfg,
-        vision_transform=vision_transform,
-        no_aug_vision_transform=no_aug_vision_transform,
-        split="train",
-    )
-    dataset_val = SequenceDataset(
-        dataset_config=args.dataset_cfg,
-        shared_config=args.shared_cfg,
-        vision_transform=vision_transform,
-        no_aug_vision_transform=no_aug_vision_transform,
-        split="val"
-    )
+    if 'calvin' in args.dataset_cfg.dataset_json:
+        dataset_train = PlayDataset(
+            dataset_config=args.dataset_cfg,
+            shared_config=args.shared_cfg,
+            vision_transform=vision_transform,
+            no_aug_vision_transform=no_aug_vision_transform,
+            split="train",
+        )
+        dataset_val = PlayDataset(
+            dataset_config=args.dataset_cfg,
+            shared_config=args.shared_cfg,
+            vision_transform=vision_transform,
+            no_aug_vision_transform=no_aug_vision_transform,
+            split="val"
+        )
+    else:
+        dataset_train = SequenceDataset(
+            dataset_config=args.dataset_cfg,
+            shared_config=args.shared_cfg,
+            vision_transform=vision_transform,
+            no_aug_vision_transform=no_aug_vision_transform,
+            split="train",
+        )
+        dataset_val = SequenceDataset(
+            dataset_config=args.dataset_cfg,
+            shared_config=args.shared_cfg,
+            vision_transform=vision_transform,
+            no_aug_vision_transform=no_aug_vision_transform,
+            split="val"
+        )
     print("Length of dataset_train: ", len(dataset_train))
     print("Length of dataset_val: ", len(dataset_val))
 
-    for data in dataset_train:
-        import ipdb; ipdb.set_trace()
+    # reverse the order of the dataset
+    for data in reversed(dataset_train):
+        # import ipdb; ipdb.set_trace()
+        a = 2
         # data: observation, proprio, action, prompt_mask, weight_mask
         # data['observation']: (512, 2, 3, 224, 224): (seq_length, num_cameras, C, H, W)
         # data['proprio']: (512, 16, 10): (seq_length, timesteps, proprio_dim)
         # data['action']: (512, 16, 11): (seq_length, timesteps, action_dim)
         # data['prompt_mask']: (512) # this tells us what is part of the prompt and what is not; 1 if not part of prompt, 0 if part of prompt
         # data['weight_mask']: (512)
+
+    # for data in tqdm(dataset_train):
+    #     # import ipdb; ipdb.set_trace()
+    #     a = 2
 
 
 if __name__ == '__main__':
