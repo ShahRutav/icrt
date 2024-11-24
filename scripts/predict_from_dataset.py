@@ -44,6 +44,8 @@ benchmark_map = {
     "libero_single": "LIBERO_SINGLE",
 }
 
+HDF5_BASE_DIR = "/mnt/data1/rutavms/data/libero/icrt/libero_goal/"
+
 def set_color(env, link_names, color):
     for link_name in link_names:
         geom_id = env.env.sim.model.geom_name2id(link_name)
@@ -219,7 +221,7 @@ def get_prompt_data(task_name_prompt, resolution, args, index=4, color_name=None
 
     task_name_prompt = args.prompt_task_name if args.prompt_task_name is not None else args.task_name
     # task_name_prompt = "open_the_middle_drawer_of_the_cabinet"
-    base_dir = "/home/rutavms/data/icrt/libero_goal"
+    base_dir = HDF5_BASE_DIR
     if args.action_offset:
         action_offset_str = get_action_offset_str(args=args)
         file_name = f"{task_name_prompt}_demo_" + action_offset_str + "_test.hdf5"
@@ -286,7 +288,7 @@ def main(args):
 
     task_name = args.task_name
     if False:
-        dataset_path = f"/home/rutavms/data/icrt/libero_goal/{task_name}_demo_icrt.hdf5"
+        dataset_path = os.path.join(HDF5_BASE_DIR, f"{task_name}_demo_icrt.hdf5")
         if args.change_robot_color:
             dataset_path = dataset_path.replace("icrt.hdf5", f"icrt_{color_name}.hdf5")
         if args.change_obj_color:

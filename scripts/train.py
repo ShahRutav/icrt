@@ -175,7 +175,9 @@ def main(args : ExperimentConfig):
                 num_workers=args.trainer_cfg.num_workers // misc.get_world_size(),
                 pin_memory=args.trainer_cfg.pin_memory,
                 drop_last=True,
+                # persistent_workers=True if (args.trainer_cfg.num_workers // misc.get_world_size()) > 1 else False,
             )
+            print("Done loading train dataloader")
             if len(sampler_val) > args.shared_cfg.batch_size:
                 data_loader_val = MultiEpochsDataLoader(
                     dataset_val, sampler=sampler_val,
@@ -183,6 +185,7 @@ def main(args : ExperimentConfig):
                     num_workers=args.trainer_cfg.num_workers // misc.get_world_size(),
                     pin_memory=args.trainer_cfg.pin_memory,
                     drop_last=True,
+                    # persistent_workers=True if (args.trainer_cfg.num_workers // misc.get_world_size()) > 1 else False,
                 )
             else:
                 data_loader_val = None
