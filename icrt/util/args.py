@@ -9,7 +9,10 @@ import tyro
 @dataclasses.dataclass
 class DatasetConfig:
     # Dataset config path
-    dataset_json : str
+    dataset_json : Union[str, list[str]]
+
+    # Dataset validation config path
+    dataset_val_json : Union[str, list[str]] = None
 
     # Order the data episodes by language descriptions
     sort_by_lang : bool = True
@@ -39,7 +42,7 @@ class DatasetConfig:
     non_overlapping : Union[bool, int] = False
 
     # enable repeats of trajectory
-    num_repeat_traj : int = 1
+    num_repeat_traj : Union[int, list[int]] = 2
 
     # shuffle repeat trajectory
     shuffle_repeat_traj : bool = True
@@ -56,6 +59,15 @@ class DatasetConfig:
     # add action trajectory level action noise
     action_traj_noise : bool = False
     # action_traj_noise_range : list[(float, float)] = [(-0.09, -0.07), (-0.05, -0.03), (-0.01, 0.01), (0.03, 0.05), (0.07, 0.09)]
+
+    def __post_init__(self):
+        # Ensure dataset_json is always stored as a list
+        if isinstance(self.dataset_json, str):
+            self.dataset_json = [self.dataset_json]
+        if isinstance(self.dataset_val_json, str):
+            self.dataset_val_json = [self.dataset_val_json]
+        if isinstance(self.num_repeat_traj, int):
+            self.num_repeat_traj = [self.num_repeat_traj]
 
 @dataclasses.dataclass
 class VisionEncoderConfig:

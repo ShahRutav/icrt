@@ -1,0 +1,33 @@
+{
+    "dataset_path": [
+        "/home/rutavms/research/gaze/calvin/dataset/calvin_debug_dataset/training/temp/lift_block_table.hdf5",
+        "/home/rutavms/research/gaze/calvin/dataset/calvin_debug_dataset/training/temp/push_block_right.hdf5",
+        "/home/rutavms/research/gaze/calvin/dataset/calvin_debug_dataset/training/temp/turn_on_lightbulb.hdf5",
+        "/home/rutavms/research/gaze/calvin/dataset/calvin_debug_dataset/training/temp/lift_block_slider.hdf5",
+        "/home/rutavms/research/gaze/calvin/dataset/calvin_debug_dataset/training/temp/place_in_slider.hdf5",
+        "/home/rutavms/research/gaze/calvin/dataset/calvin_debug_dataset/training/temp/turn_off_lightbulb.hdf5"
+    ],
+    "hdf5_keys": [
+        "/home/rutavms/research/gaze/calvin/dataset/calvin_debug_dataset/training/temp/lift_block_table_keys.json",
+        "/home/rutavms/research/gaze/calvin/dataset/calvin_debug_dataset/training/temp/push_block_right_keys.json",
+        "/home/rutavms/research/gaze/calvin/dataset/calvin_debug_dataset/training/temp/turn_on_lightbulb_keys.json",
+        "/home/rutavms/research/gaze/calvin/dataset/calvin_debug_dataset/training/temp/lift_block_slider_keys.json",
+        "/home/rutavms/research/gaze/calvin/dataset/calvin_debug_dataset/training/temp/place_in_slider_keys.json",
+        "/home/rutavms/research/gaze/calvin/dataset/calvin_debug_dataset/training/temp/turn_off_lightbulb_keys.json"
+    ],
+    "epi_len_mapping_json": "/home/rutavms/research/gaze/calvin/dataset/calvin_debug_dataset/training/temp/combined_epi_len_mapping.json",
+    "verb_to_episode": "/home/rutavms/research/gaze/calvin/dataset/calvin_debug_dataset/training/temp/verb_to_episode.json",
+    "action_keys": [
+        "action/cartesian_pose",
+        "action/gripper_position"
+    ],
+    "image_keys": [
+        "observation/rgb_static",
+        "observation/rgb_gripper"
+    ],
+    "proprio_keys": [
+        "observation/cartesian_pose",
+        "observation/gripper_position"
+    ],
+    "train_split": 1.0
+}

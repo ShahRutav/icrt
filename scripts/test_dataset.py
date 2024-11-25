@@ -16,6 +16,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 import timm
 from timm.data.loader import MultiEpochsDataLoader
+
+from icrt.data import load_datasets
 from icrt.data.dataset import SequenceDataset, PlayDataset
 
 import icrt.util.misc as misc
@@ -27,7 +29,6 @@ from icrt.util.model_constructor import model_constructor
 def main(args : ExperimentConfig):
 
     # Loading data config
-    data_cfg = json.load(open(args.dataset_cfg.dataset_json, 'r'))
 
     # hdf5_file = h5py.File(data_cfg['dataset_path'][0], 'r')
     # print("Keys: %s" % hdf5_file.keys())
@@ -49,9 +50,11 @@ def main(args : ExperimentConfig):
     np.random.seed(seed)
     cudnn.benchmark = True
 
-    # make sure the number of cameras is correct
-    rgb_observations = data_cfg["image_keys"]
-    assert len(rgb_observations) == args.shared_cfg.num_cameras, "Number of cameras must match the number of rgb observations"
+    for dataset_json in args.dataset_cfg.dataset_json:
+        data_cfg = json.load(open(dataset_json, 'r'))
+        # make sure the number of cameras is correct
+        rgb_observations = data_cfg["image_keys"]
+        assert len(rgb_observations) == args.shared_cfg.num_cameras, "Number of cameras must match the number of rgb observations"
 
     eff_batch_size = args.shared_cfg.batch_size * args.trainer_cfg.accum_iter * misc.get_world_size()
 
@@ -84,43 +87,11 @@ def main(args : ExperimentConfig):
     # print(optimizer)
     loss_scaler = NativeScaler()
 
-    if 'calvin' in args.dataset_cfg.dataset_json:
-        dataset_train = PlayDataset(
-            dataset_config=args.dataset_cfg,
-            shared_config=args.shared_cfg,
-            vision_transform=vision_transform,
-            no_aug_vision_transform=no_aug_vision_transform,
-            split="train",
-        )
-        dataset_val = PlayDataset(
-            dataset_config=args.dataset_cfg,
-            shared_config=args.shared_cfg,
-            vision_transform=vision_transform,
-            no_aug_vision_transform=no_aug_vision_transform,
-            split="val"
-        )
-    else:
-        dataset_train = SequenceDataset(
-            dataset_config=args.dataset_cfg,
-            shared_config=args.shared_cfg,
-            vision_transform=vision_transform,
-            no_aug_vision_transform=no_aug_vision_transform,
-            split="train",
-        )
-        dataset_val = SequenceDataset(
-            dataset_config=args.dataset_cfg,
-            shared_config=args.shared_cfg,
-            vision_transform=vision_transform,
-            no_aug_vision_transform=no_aug_vision_transform,
-            split="val"
-        )
-    print("Length of dataset_train: ", len(dataset_train))
-    print("Length of dataset_val: ", len(dataset_val))
+    dataset_train, dataset_val = load_datasets(args, vision_transform, no_aug_vision_transform)
 
     # reverse the order of the dataset
-    for data in reversed(dataset_train):
-        # import ipdb; ipdb.set_trace()
-        a = 2
+    # for data in reversed(dataset_train):
+        # a = 2
         # data: observation, proprio, action, prompt_mask, weight_mask
         # data['observation']: (512, 2, 3, 224, 224): (seq_length, num_cameras, C, H, W)
         # data['proprio']: (512, 16, 10): (seq_length, timesteps, proprio_dim)
@@ -128,9 +99,9 @@ def main(args : ExperimentConfig):
         # data['prompt_mask']: (512) # this tells us what is part of the prompt and what is not; 1 if not part of prompt, 0 if part of prompt
         # data['weight_mask']: (512)
 
-    # for data in tqdm(dataset_train):
-    #     # import ipdb; ipdb.set_trace()
-    #     a = 2
+    for data in tqdm(dataset_train):
+        # import ipdb; ipdb.set_trace()
+        a = 2
 
 
 if __name__ == '__main__':

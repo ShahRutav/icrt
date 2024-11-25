@@ -14,6 +14,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 import timm
 from timm.data.loader import MultiEpochsDataLoader
+
+from icrt.data import load_datasets
 from icrt.data.dataset import SequenceDataset, PlayDataset
 
 import icrt.util.misc as misc
@@ -102,33 +104,7 @@ def main(args : ExperimentConfig):
     num_tasks = misc.get_world_size()
     global_rank = misc.get_rank()
 
-    dataset_kwargs = {
-        "dataset_config": args.dataset_cfg,
-        "shared_config": args.shared_cfg,
-        "vision_transform": vision_transform,
-        "no_aug_vision_transform": no_aug_vision_transform,
-    }
-    dataset_train, dataset_val = None, None
-    if 'calvin' in args.dataset_cfg.dataset_json:
-        dataset_train = PlayDataset(
-            split="train",
-            **dataset_kwargs
-        )
-        dataset_val = PlayDataset(
-            split="val",
-            **dataset_kwargs
-        )
-    else:
-        dataset_train = SequenceDataset(
-            split="train",
-            **dataset_kwargs
-        )
-        dataset_val = SequenceDataset(
-            split="val",
-            **dataset_kwargs
-        )
-    print("Length of dataset_train: ", len(dataset_train))
-    print("Length of dataset_val: ", len(dataset_val))
+    dataset_train, dataset_val = load_datasets(args, vision_transform, no_aug_vision_transform)
 
     # save the train the val splits
     dataset_train.save_split(os.path.join(args.logging_cfg.output_dir, "train_split.json"))

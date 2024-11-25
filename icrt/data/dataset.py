@@ -17,7 +17,7 @@ class SequenceDataset(torch.utils.data.Dataset):
     maximum_length : int = 450
 
     # remove long tail situations
-    min_demos : int = 4
+    min_demos : int = 2 # TODO: Change this to 4
 
     def __init__(
         self,
@@ -28,8 +28,16 @@ class SequenceDataset(torch.utils.data.Dataset):
         split : str = "train",
         split_file : str = None, # path to the train val split file (json)
     ):
+        if isinstance(dataset_config.dataset_json, list):
+            assert len(dataset_config.dataset_json) == 1, "PlayDataset only supports one dataset: {}".format(dataset_config.dataset_json)
+            dataset_config.dataset_json = dataset_config.dataset_json[0]
         # parse the dataset config
-        dataset_json = load_json(dataset_config.dataset_json)
+        if dataset_config.dataset_val_json is None:
+            dataset_config.dataset_val_json = dataset_config.dataset_json
+        if isinstance(dataset_config.dataset_val_json, list):
+            assert len(dataset_config.dataset_val_json) == 1, "PlayDataset only supports one dataset {}".format(dataset_config.dataset_val_json)
+            dataset_config.dataset_val_json = dataset_config.dataset_val_json[0]
+        dataset_json = load_json(dataset_config.dataset_json if split != "val" else dataset_config.dataset_val_json)
 
         # dataset_path: List of hdf5 paths
         dataset_path = dataset_json["dataset_path"]
@@ -755,6 +763,14 @@ class PlayDataset(torch.utils.data.Dataset):
         no_aug_vision_transform : transforms.Compose = None, # this is for wrist camera in particular
         split : str = "train",
     ):
+        if isinstance(dataset_config.dataset_json, list):
+            assert len(dataset_config.dataset_json) == 1, "PlayDataset only supports one dataset"
+            dataset_config.dataset_json = dataset_config.dataset_json[0]
+        if dataset_config.dataset_val_json is None:
+            dataset_config.dataset_val_json = dataset_config.dataset_json
+        if isinstance(dataset_config.dataset_val_json, list):
+            assert len(dataset_config.dataset_val_json) == 1, "PlayDataset only supports one dataset"
+            dataset_config.dataset_val_json = dataset_config.dataset_val_json[0]
         # dataset_json consists of the names of the setup to consider for play dataset
         self.dataset_config = dataset_config
         self.split = split
@@ -763,7 +779,7 @@ class PlayDataset(torch.utils.data.Dataset):
         self.no_aug_vision_transform = no_aug_vision_transform
 
 
-        dataset_json = load_json(dataset_config.dataset_json)
+        dataset_json = load_json(dataset_config.dataset_json if split == "train" else dataset_config.dataset_val_json)
         dataset_paths = dataset_json["dataset_path"]
         # read the env variable CALVIN_ROOT
         calvin_root = os.getenv("CALVIN_DATAROOT")
