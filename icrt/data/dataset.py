@@ -9,6 +9,19 @@ from .utils import euler_to_rot_6d, quat_to_rot_6d, euler_to_quat, load_json, co
 from icrt.util.args import DatasetConfig, SharedConfig
 from collections import defaultdict
 
+class ConcatDatasetO(torch.utils.data.ConcatDataset):
+    def save_split(self, *args, **kwargs):
+        for dataset in self.datasets:
+            dataset.save_split(*args, **kwargs)
+        return
+    def shuffle_dataset(self, seed=0):
+        """
+        Shuffle the dataset according to the seed
+        """
+        for dataset in self.datasets:
+            dataset.shuffle_dataset(seed=seed)
+        return
+
 class SequenceDataset(torch.utils.data.Dataset):
 
     # set minimum trajectory length
@@ -794,6 +807,12 @@ class PlayDataset(torch.utils.data.Dataset):
             scene_info_path = os.path.join(_path, "scene_info.npy")
             indices = next(iter(np.load(scene_info_path, allow_pickle=True).item().values()))
             indices = list(range(indices[0], indices[1] + 1))
+            missing_idx_path = os.path.join(_path, "missing_idx.npy")
+            if os.path.exists(missing_idx_path):
+                missing_idx = next(iter(np.load(missing_idx_path, allow_pickle=True).item().values()))
+                indices = list(set(indices) - set(missing_idx))
+            else:
+                print("[WARNING]: missing idxes are not generated.")
             self._indices_list.append(indices)
 
         self.image_keys = dataset_json["image_keys"]
