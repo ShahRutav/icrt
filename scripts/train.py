@@ -39,11 +39,12 @@ def main(args : ExperimentConfig):
     cudnn.benchmark = True
 
     # Loading data config
-    data_cfg = json.load(open(args.dataset_cfg.dataset_json, 'r'))
+    for dataset_json in args.dataset_cfg.dataset_json:
+        data_cfg = json.load(open(dataset_json, 'r'))
 
-    # make sure the number of cameras is correct
-    rgb_observations = data_cfg["image_keys"]
-    assert len(rgb_observations) == args.shared_cfg.num_cameras, "Number of cameras must match the number of rgb observations"
+        # make sure the number of cameras is correct
+        rgb_observations = data_cfg["image_keys"]
+        assert len(rgb_observations) == args.shared_cfg.num_cameras, "Number of cameras must match the number of rgb observations"
 
     model = model_constructor(
         model_config=args.model_cfg,
