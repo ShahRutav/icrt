@@ -1,3 +1,4 @@
+# ls /mnt/nfs_client/calvin/task_D_D/training/ | grep episode | awk -F '_' '{print $2}' | awk -F '.' '{print $1}' > /mnt/nfs_client/calvin/task_D_D/training/id_list.txt
 import numpy as np
 def process_numbers(file_name, scene_info_path):
     # Read numbers from the file
@@ -12,6 +13,7 @@ def process_numbers(file_name, scene_info_path):
     max_num = numbers[-1]
     all_numbers = set(range(min_num, max_num + 1))
     indices = next(iter(np.load(scene_info_path, allow_pickle=True).item().values()))
+    print("Indices min and max from scene info", indices)
     all_numbers = set(list(range(indices[0], indices[1] + 1)))
     missing_numbers = sorted(all_numbers - set(numbers))
 
@@ -22,9 +24,11 @@ def process_numbers(file_name, scene_info_path):
     # Display the results
     print(f"Minimum number: {min_num}")
     print(f"Maximum number: {max_num}")
-    print(f"Length Missing numbers: {len(missing_numbers)}")
+    print(f"Length Missing numbers: {len(missing_numbers)}; Existing numbers: {len(numbers)}")
 
-scene_info_location = "/mnt/nfs_client/calvin/task_D_D/training/scene_info.npy"
+mode = "training"
+scene_info_location = f"/mnt/nfs_client/calvin/task_D_D/{mode}/scene_info.npy"
+list_path = f"/mnt/nfs_client/calvin/task_D_D/{mode}/id_list.txt"
 # Replace 'D_id_list.txt' with the actual file name
-process_numbers('D_id_list.txt', scene_info_path=scene_info_location)
+process_numbers(list_path, scene_info_path=scene_info_location)
 

@@ -207,6 +207,8 @@ class SequenceDataset(torch.utils.data.Dataset):
 
         # enable repeating trajectory so that it can learn the copying behavior
         self.num_repeat_traj = dataset_config.num_repeat_traj
+        if split == 'val':
+            self.num_repeat_traj = 1 # do not repeat for validation
 
         # define use delta action flag
         self.use_delta_action = shared_config.use_delta_action

@@ -1,0 +1,61 @@
+{
+    "dataset_path": [
+        "/mnt/nfs_client/calvin/task_D_D/training/language/place_in_drawer.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/move_slider_right.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/turn_on_lightbulb.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/open_drawer.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/push_block_right.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/turn_off_led.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/close_drawer.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/push_block_left.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/lift_block_slider.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/lift_block_table.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/rotate_block_right.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/move_slider_left.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/turn_off_lightbulb.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/lift_block_drawer.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/rotate_block_left.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/turn_on_led.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/stack_block.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/push_into_drawer.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/unstack_block.hdf5",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/place_in_slider.hdf5"
+    ],
+    "hdf5_keys": [
+        "/mnt/nfs_client/calvin/task_D_D/training/language/place_in_drawer_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/move_slider_right_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/turn_on_lightbulb_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/open_drawer_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/push_block_right_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/turn_off_led_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/close_drawer_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/push_block_left_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/lift_block_slider_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/lift_block_table_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/rotate_block_right_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/move_slider_left_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/turn_off_lightbulb_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/lift_block_drawer_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/rotate_block_left_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/turn_on_led_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/stack_block_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/push_into_drawer_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/unstack_block_keys.json",
+        "/mnt/nfs_client/calvin/task_D_D/training/language/place_in_slider_keys.json"
+    ],
+    "epi_len_mapping_json": "/mnt/nfs_client/calvin/task_D_D/training/language/combined_epi_len_mapping.json",
+    "verb_to_episode": "/mnt/nfs_client/calvin/task_D_D/training/language/verb_to_episode.json",
+    "action_keys": [
+        "action/cartesian_pose",
+        "action/gripper_position"
+    ],
+    "image_keys": [
+        "observation/rgb_static",
+        "observation/rgb_gripper"
+    ],
+    "proprio_keys": [
+        "observation/cartesian_pose",
+        "observation/gripper_position"
+    ],
+    "train_split": 1.0
+}
