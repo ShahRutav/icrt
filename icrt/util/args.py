@@ -199,6 +199,9 @@ class TrainerConfig:
     # number of workers for dataloader
     num_workers : int = 20
 
+    # compile the model or not
+    compile_model : bool = False
+
 
 @dataclasses.dataclass
 class SharedConfig:
