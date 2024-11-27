@@ -1,5 +1,5 @@
 import torch
-from .dataset import PlayDataset, SequenceDataset, ConcatDatasetO
+from .dataset import PlayDataset, SequenceDataset, CustomConcatDataset
 
 def get_dataset(args, dataset_kwargs):
     dataset_train, dataset_val = None, None
@@ -65,8 +65,8 @@ def load_datasets(args, vision_transform, no_aug_vision_transform):
             print("*"*20)
             dataset_train_list.append(_dataset_train)
             dataset_val_list.append(_dataset_val)
-        dataset_train = ConcatDatasetO(dataset_train_list)
-        dataset_val = ConcatDatasetO(dataset_val_list)
+        dataset_train = CustomConcatDataset(dataset_train_list)
+        dataset_val = CustomConcatDataset(dataset_val_list)
 
         print("*"*20)
         print("Length of dataset_train: ", len(dataset_train))

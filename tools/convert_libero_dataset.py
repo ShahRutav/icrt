@@ -231,6 +231,7 @@ def dataset_states_to_obs(args):
         action_offset_str = '_action_offset_' + '_'.join(action_offset_str)
         args.output_name = action_offset_str + '_' + args.output_name
     output_path = os.path.join(base_dataset_path, benchmark.get_task_demonstration(args.task_id)[:-5] + '_' + args.output_name)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     f_out = h5py.File(output_path, "w")
     # data_grp = f_out.create_group("data")
     data_grp = f_out
@@ -323,6 +324,14 @@ if __name__ == "__main__":
         type=int,
         required=True,
         help="index of task to process",
+    )
+    # name of hdf5 to write - it will be in the same directory as @dataset
+    parser.add_argument(
+        "--output_dir",
+        type=str,
+        required=False,
+        default="/data/rutavms/data/libero/icrt/",
+        help="name of output dir",
     )
     # name of hdf5 to write - it will be in the same directory as @dataset
     parser.add_argument(

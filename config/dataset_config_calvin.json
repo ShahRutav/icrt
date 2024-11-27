@@ -1,6 +1,6 @@
 {
     "dataset_path": [
-        "calvin_debug_dataset"
+        "task_D_D"
     ],
     "image_keys": ["rgb_static", "rgb_gripper"],
     "proprio_keys": ["robot_obs"],

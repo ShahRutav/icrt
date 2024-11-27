@@ -26,6 +26,45 @@ from icrt.util.args import ExperimentConfig
 from icrt.util.engine import train_one_epoch
 from icrt.util.model_constructor import model_constructor
 
+def verify_dataloading(dataset, args):
+    epoch = 1
+    # dataset.shuffle_dataset(epoch)
+    num_tasks = misc.get_world_size()
+    global_rank = misc.get_rank()
+    sampler_train = misc.DistributedSubEpochSampler(
+        dataset, num_replicas=num_tasks, rank=global_rank, split_epoch=args.shared_cfg.split_epoch, shuffle=True
+    )
+    print("Sampler = %s" % str(sampler_train))
+    print("length of sampler: ", len(sampler_train))
+    data_loader_train = MultiEpochsDataLoader(
+        dataset, sampler=sampler_train,
+        batch_size=args.shared_cfg.batch_size,
+        num_workers=args.trainer_cfg.num_workers // misc.get_world_size(),
+        pin_memory=args.trainer_cfg.pin_memory,
+        drop_last=True,
+        # persistent_workers=True if (args.trainer_cfg.num_workers // misc.get_world_size()) > 1 else False,
+    )
+    print("Done loading train dataloader")
+    for data in tqdm(data_loader_train):
+        continue
+    return True
+
+def verify_dataset_paths(dataset):
+    indices = dataset._indices_list
+    for indices in dataset._indices_list:
+        num_pred_steps = dataset.num_pred_steps
+        seq_length = dataset.seq_length
+        print(num_pred_steps, seq_length)
+        for idx in tqdm(indices):
+            start_index = idx
+            end_index = idx + seq_length + num_pred_steps - 1
+            dataset_path = dataset.dataset_paths[0]
+            state_paths = [os.path.join(dataset_path, f"episode_{ind:07d}.npz") for ind in range(start_index, end_index)]
+            # only print missing paths
+            path_bool = [os.path.exists(path) for path in state_paths]
+            assert all(path_bool), f"Missing paths: {state_paths[path_bool.index(False)]}"
+    return True
+
 def main(args : ExperimentConfig):
 
     # Loading data config
@@ -99,12 +138,15 @@ def main(args : ExperimentConfig):
         # data['prompt_mask']: (512) # this tells us what is part of the prompt and what is not; 1 if not part of prompt, 0 if part of prompt
         # data['weight_mask']: (512)
 
-    for data in tqdm(dataset_train):
-        # import ipdb; ipdb.set_trace()
-        a = 2
-
+    # for data in tqdm(dataset_train):
+    #     # import ipdb; ipdb.set_trace()
+    #     a = 2
+    # verify_dataset_paths(dataset_train)
+    verify_dataset_paths(dataset_val)
+    # verify_dataloading(dataset_val, args)
 
 if __name__ == '__main__':
+    # 420006 led to the error at 420499
     # parsing args
     args = tyro.cli(ExperimentConfig)
 

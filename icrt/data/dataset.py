@@ -1,4 +1,5 @@
 import os
+import time
 import json
 import h5py
 import torch
@@ -9,7 +10,7 @@ from .utils import euler_to_rot_6d, quat_to_rot_6d, euler_to_quat, load_json, co
 from icrt.util.args import DatasetConfig, SharedConfig
 from collections import defaultdict
 
-class ConcatDatasetO(torch.utils.data.ConcatDataset):
+class CustomConcatDataset(torch.utils.data.ConcatDataset):
     def save_split(self, *args, **kwargs):
         for dataset in self.datasets:
             dataset.save_split(*args, **kwargs)
@@ -803,16 +804,47 @@ class PlayDataset(torch.utils.data.Dataset):
         # create the base directories for the datasets
         self.dataset_paths = [os.path.join(calvin_root, dataset_path, extension) for dataset_path in dataset_paths]
 
+        # define sequence length
+        self.seq_length = shared_config.seq_length
+        # change prediction to be k steps
+        self.num_pred_steps = shared_config.num_pred_steps
+        assert self.num_pred_steps >= 1, "Number of prediction steps must be at least 1"
+        print("Number of prediction steps: ", self.num_pred_steps)
+
         self._indices_list = []
         for _path in self.dataset_paths:
             # gather scene_info.npy
+            sorted_valid_filename = f"sorted_valid_pred_step{self.num_pred_steps}_seq_length{self.seq_length}.npy"
+            sorted_valid_path = os.path.join(_path, sorted_valid_filename)
+            if os.path.exists(sorted_valid_path):
+                indices = np.load(sorted_valid_path, allow_pickle=True)
+                self._indices_list.append(indices)
+                continue
+
             scene_info_path = os.path.join(_path, "scene_info.npy")
             indices = next(iter(np.load(scene_info_path, allow_pickle=True).item().values()))
             indices = list(range(indices[0], indices[1] + 1))
             missing_idx_path = os.path.join(_path, "missing_idx.npy")
             if os.path.exists(missing_idx_path):
                 missing_idx = next(iter(np.load(missing_idx_path, allow_pickle=True).item().values()))
-                indices = list(set(indices) - set(missing_idx))
+                indices = set(indices) - set(missing_idx)
+                start_time = time.time()
+                sorted_indices = sorted(indices)
+                print(f"Time taken to sort indices: {time.time() - start_time}")
+                # remove all the indices that have one of the following indices missing: idx + 1, idx + 2, ..., idx + self.seq_length + self.num_pred_steps - 1
+                invalid_indices = set()
+                start_time = time.time()
+                for pos, idx in enumerate(sorted_indices):
+                    # if idx == 420006:
+                    #     import ipdb; ipdb.set_trace()
+                    for i in range(self.seq_length + self.num_pred_steps):
+                        if (pos+i >= len(sorted_indices)) or (sorted_indices[pos + i] - idx != i):
+                            invalid_indices.add(idx)
+                            break
+                print(f"Time taken to find invalid indices: {time.time() - start_time}")
+                indices = indices - invalid_indices
+                indices = list(indices)
+                np.save(sorted_valid_path, indices)
             else:
                 print("[WARNING]: missing idxes are not generated.")
             self._indices_list.append(indices)
@@ -822,8 +854,6 @@ class PlayDataset(torch.utils.data.Dataset):
         self.action_keys = dataset_json["action_keys"]
 
 
-        # define sequence length
-        self.seq_length = shared_config.seq_length
 
         self.goal_conditioned = dataset_config.goal_conditioned
         self.sort_by_lang = dataset_config.sort_by_lang
@@ -871,10 +901,6 @@ class PlayDataset(torch.utils.data.Dataset):
         else:
             self.vision_aug = False
 
-        # change prediction to be k steps
-        self.num_pred_steps = shared_config.num_pred_steps
-        assert self.num_pred_steps >= 1, "Number of prediction steps must be at least 1"
-        print("Number of prediction steps: ", self.num_pred_steps)
 
     def __len__(self):
         data_length = sum([len(indices) for indices in self._indices_list])
@@ -1100,4 +1126,7 @@ class PlayDataset(torch.utils.data.Dataset):
         indices = rng.permutation(len(self._indices_list))
         # convert the indices to the list of indices
         self._indices_list = [self._indices_list[i] for i in indices]
+        # shuffle the indices within each dataset
+        for i in range(len(self._indices_list)):
+            self._indices_list[i] = rng.permutation(self._indices_list[i])
         return
