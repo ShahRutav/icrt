@@ -4,6 +4,8 @@ import json
 import argparse
 import numpy as np
 
+from icrt.util.calvin_utils import generate_dataset_paths, get_subsequence, break_subsequence, taskname2taskname
+
 class NpEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.integer):
@@ -14,60 +16,6 @@ class NpEncoder(json.JSONEncoder):
             return obj.tolist()
         else:
             return super(NpEncoder, self).default(obj)
-
-def task2task_id(task_ann):
-    possible_color_names = ['red', 'green', 'blue', 'yellow', 'purple', 'cyan', 'magenta', 'white', 'black', 'pink']
-    for color in possible_color_names:
-        task_ann = task_ann.replace(color + '_', "")
-    return task_ann
-
-def generate_dataset_paths(dataroot, start, end):
-    dataset_paths = []
-    for i in range(start, end):
-        episode_path = os.path.join(dataroot, f"episode_{i:07d}.npz")
-        dataset_paths.append(episode_path)
-    return dataset_paths
-
-def get_subsequence(state_paths):
-    # find the dataset index
-    subsequence = []
-    for state_path in state_paths:
-        with np.load(state_path) as f:
-            data = {k: f[k] for k in f.files}
-        subsequence.append(data)
-    return subsequence
-
-def load_proprio(subseq):
-    # returns the cartesian_pose and gripper_position
-    cartesian_pose = [s['robot_obs'][None, :6] for s in subseq] # (T, 6)
-    cartesian_pose = np.concatenate(cartesian_pose, axis=0) # (T, 6)
-
-    gripper_position = [s['robot_obs'][None, -1:] for s in subseq] # (T, 1)
-    gripper_position = np.concatenate(gripper_position, axis=0) # (T, 1)
-    return cartesian_pose, gripper_position
-
-def load_action(subseq):
-    # returns the action/cartesian_pose, action/gripper_position
-    cartesian_pose = [s['actions'][None, :6] for s in subseq] # (T, 6)
-    cartesian_pose = np.concatenate(cartesian_pose, axis=0) # (T, 6)
-
-    gripper_position = [s['actions'][None, -1:] for s in subseq] # (T, 1)
-    gripper_position = np.concatenate(gripper_position, axis=0) # (T, 1)
-    return cartesian_pose, gripper_position
-
-def load_obs(subseq, keys=["rgb_gripper", "rgb_static"]):
-    key2obs_img = {}
-    for key in keys:
-        obs_img = [s[key][None] for s in subseq]
-        obs_img = np.concatenate(obs_img, axis=0)
-        key2obs_img[key] = obs_img
-    return key2obs_img
-
-def break_subsequence(subsequence):
-    actions = load_action(subsequence)
-    proprio = load_proprio(subsequence)
-    obs = load_obs(subsequence)
-    return actions, proprio, obs
 
 def main(args):
     dataset_config = {
@@ -91,7 +39,7 @@ def main(args):
     # ['info']['indx']: list of start and end indices corresponding to the precomputed language embeddings
     task_ids = []
     for i, ((start, end), ann) in enumerate(zip(annotations['info']['indx'], annotations['language']['task'])):
-        ann = task2task_id(ann)
+        ann = taskname2taskname(ann)
         print(f"Episode {i}: {ann}")
         print(f"Start: {start}, End: {end}")
         task_ids.append(ann)
@@ -114,7 +62,7 @@ def main(args):
         i = 0
 
         for _i, ((start, end), ann) in enumerate(zip(annotations['info']['indx'], annotations['language']['task'])):
-            ann = task2task_id(ann)
+            ann = taskname2taskname(ann)
             if ann != task_id:
                 continue
             # generate dataset paths

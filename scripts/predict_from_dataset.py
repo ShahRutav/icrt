@@ -35,6 +35,7 @@ from libero.lifelong.utils import (
     compute_flops,
 )
 from icrt.models.policy.icrt_wrapper import ICRTWrapper
+from icrt.util.eval_utils import EvalLogger
 
 benchmark_map = {
     "libero_10": "LIBERO_10",
@@ -55,26 +56,6 @@ def set_color(env, link_names, color):
         # env.env.sim.model.geom_rgba[geom_id] = [1.0, 0.0, 0.0, 1]  # red color with full opacity
         env.env.sim.model.geom_matid[geom_id] = 1
     return env
-
-class EvalLogger:
-    def __init__(self, log_keys: list):
-        self.log_keys = log_keys
-        self._dict = {}
-        for key in self.log_keys:
-            self._dict.update({key: []})
-
-    def add_kv(self, key, value):
-        assert key in self.log_keys, f"Tried to log {key} but logger is initialized with keys {self.log_keys}"
-        self._dict[key].append(value)
-
-    def save(self, filename):
-        df = pd.DataFrame(self._dict)
-        # if the file exists, append to it
-        if os.path.exists(filename):
-            df.to_csv(filename, mode='a', header=False, index=False)
-        else:
-            df.to_csv(filename, index=False)
-        return
 
 def get_task_from_name(task_name, benchmark):
     task = None

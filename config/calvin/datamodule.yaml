@@ -1,0 +1,144 @@
+_target_: calvin_agent.datasets.calvin_data_module.CalvinDataModule
+_recursive_: false
+root_data_dir: "dataset/task_D_D"
+action_space: 7
+action_max: [1., 1., 1., 1., 1., 1., 1.,]
+action_min: [-1., -1., -1., -1., -1., -1., -1]
+shuffle_val: false
+proprioception_dims:
+  n_state_obs: 8
+  keep_indices: [[0, 7], [14,15]]
+  robot_orientation_idx: [3, 6]
+  normalize: True
+  normalize_robot_orientation: True
+observation_space:
+  rgb_obs: ['rgb_static', 'rgb_gripper']
+  depth_obs: []
+  state_obs: ['robot_obs']
+  actions: ['actions']
+  language: ['language']
+datasets:
+  vision_dataset:
+    _target_: calvin_agent.datasets.disk_dataset.DiskDataset
+    name: ${datasets.vision_dataset._target_}
+    key: "vis"
+    save_format: "npz"
+    batch_size: 32
+    min_window_size: 16
+    max_window_size: 32
+    proprio_state: ${proprioception_dims}
+    obs_space: ${observation_space}
+    pad: true
+    lang_folder: "lang_annotations" #${datamodule.datasets.lang_dataset.lang_folder}
+    num_workers: 2
+  lang_dataset:
+    _target_: calvin_agent.datasets.disk_dataset.DiskDataset
+    name: ${datasets.lang_dataset._target_}
+    key: "lang"
+    save_format: "npz"
+    batch_size: 32
+    min_window_size: 16
+    max_window_size: 32
+    proprio_state: ${proprioception_dims}
+    obs_space: ${observation_space}
+    skip_frames: 1
+    pad: true
+    lang_folder: "lang_annotations"
+    num_workers: 2
+transforms:
+  train:
+    rgb_static:
+      - _target_: torchvision.transforms.Resize
+        size: 200
+    rgb_gripper:
+      - _target_: torchvision.transforms.Resize
+        size: 84
+      - _target_: calvin_agent.utils.transforms.ScaleImageTensor
+      - _target_: torchvision.transforms.Normalize
+        mean: [0.5,]
+        std: [0.5,]
+      - _target_: calvin_agent.utils.transforms.AddGaussianNoise
+        mean: [0.0]
+        std: [0.01]
+    depth_static:
+      - _target_: torchvision.transforms.Resize
+        size: 200
+      - _target_: calvin_agent.utils.transforms.AddDepthNoise
+        shape: [1000.0]
+        rate: [1000.0]
+      - _target_: calvin_agent.utils.transforms.AddGaussianNoise
+        mean: [0.0]
+        std: [0.01]
+    depth_gripper:
+      - _target_: torchvision.transforms.Resize
+        size: 84
+  #    - _target_: calvin_agent.utils.transforms.AddDepthNoise
+  #      shape: [ 1000.0 ]
+  #      rate: [ 1000.0 ]
+      - _target_: calvin_agent.utils.transforms.AddGaussianNoise
+        mean: [ 0.0 ]
+        std: [ 0.01 ]
+    rgb_tactile:
+      - _target_: torchvision.transforms.Resize
+        size: 70
+      - _target_: torchvision.transforms.RandomCrop
+        size: 64
+      - _target_: calvin_agent.utils.transforms.ScaleImageTensor
+      - _target_: torchvision.transforms.Normalize
+        mean: [0.5]
+        std: [0.5]
+      - _target_: calvin_agent.utils.transforms.AddGaussianNoise
+        mean: [ 0.0 ]
+        std: [ 0.01 ]
+    depth_tactile:
+      - _target_: torchvision.transforms.Resize
+        size: 64
+      - _target_: torchvision.transforms.Normalize
+        mean: [0.1,]
+        std: [0.2,]
+      - _target_: calvin_agent.utils.transforms.AddGaussianNoise
+        mean: [ 0.0 ]
+        std: [ 0.01 ]
+    robot_obs:
+      - _target_: calvin_agent.utils.transforms.NormalizeVector
+      - _target_: calvin_agent.utils.transforms.AddGaussianNoise
+        mean: [0.0,]
+        std: [0.01,]
+    scene_obs:
+      - _target_: calvin_agent.utils.transforms.NormalizeVector
+      - _target_: calvin_agent.utils.transforms.AddGaussianNoise
+        mean: [0.0,]
+        std: [0.01,]
+
+  val:
+    rgb_static:
+      - _target_: torchvision.transforms.Resize
+        size: 200
+    rgb_gripper:
+      - _target_: torchvision.transforms.Resize
+        size: 84
+    depth_static:
+      - _target_: torchvision.transforms.Resize
+        size: 200
+    depth_gripper:
+      - _target_: torchvision.transforms.Resize
+        size: 84
+    rgb_tactile:
+      - _target_: torchvision.transforms.Resize
+        size: 70
+      - _target_: torchvision.transforms.RandomCrop
+        size: 64
+      - _target_: calvin_agent.utils.transforms.ScaleImageTensor
+      - _target_: torchvision.transforms.Normalize
+        mean: [0.5]
+        std: [0.5]
+    depth_tactile:
+      - _target_: torchvision.transforms.Resize
+        size: 64
+      - _target_: torchvision.transforms.Normalize
+        mean: [0.1,]
+        std: [0.2,]
+    robot_obs:
+      - _target_: calvin_agent.utils.transforms.NormalizeVector
+    scene_obs:
+      - _target_: calvin_agent.utils.transforms.NormalizeVector
