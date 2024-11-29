@@ -216,13 +216,17 @@ def evaluate_policy_singlestep(env, icrt, datamodule, dataroot, args):
 
     total_trajs = 0
     task_to_id_dict = task_oracle.task_to_id
+    global_avg_loss = 0.0
 
     for task_name, task_id in task_to_id_dict.items():
+        if task_name == "rotate_red_block_left":
+            continue
         task_id = task_to_id_dict[task_name]
         traj_list = get_task_to_id_dict(dataroot, task_name, lang_annotations)
         if len(traj_list) == 0:
             continue
         print(f"Task: {task_name}")
+        # visualize_trajectory(traj_list[0][0])
         prompt_data = [generate_prompt(traj_list, index=i) for i in range(args.n_prompt)]
         prompt_side_images = np.concatenate([np.array(p["side_images"]) for p in prompt_data], axis=0)
         prompt_wrist_images = np.concatenate([np.array(p["wrist_images"]) for p in prompt_data], axis=0)
@@ -242,11 +246,13 @@ def evaluate_policy_singlestep(env, icrt, datamodule, dataroot, args):
             icrt.reset()
             icrt.prompt(**prompt_dict)
             success, avg_loss = rollout(icrt, env, init_state, task_oracle=task_oracle, task=task_name, args=args, gt_actions=actions, gt_obs=obs, gt_proprio=proprio, use_gt=args.use_gt)
+            global_avg_loss += avg_loss
             print(colored(f"Success: {success}, Avg Loss: {avg_loss:.3f}", "yellow"))
             if success:
                 results[task_name] += 1
             # visualize_trajectory(obs)
     print(f"Total eval trajs: {total_trajs}")
+    print(f"Global Avg Loss: {global_avg_loss / total_trajs:.3f}")
     print(f"SR: {sum(results.values()) / total_trajs * 100:.1f}%")
 
 def main(args):

@@ -727,7 +727,7 @@ class SequenceDataset(torch.utils.data.Dataset):
                     # permute from T, H, W, C to T, C, H, W
                     subsequence = subsequence.permute(0, 3, 1, 2)
                     # transform each subsequence independently
-                    if "wrist" in k or "hand" in k:
+                    if ("wrist" in k) or ("hand" in k) or ("gripper" in k):
                         subsequence = self.no_aug_vision_transform(subsequence).float()
                     else:
                         subsequence = self.vision_transform(subsequence).float()
@@ -1099,7 +1099,7 @@ class PlayDataset(torch.utils.data.Dataset):
             # permute from T, H, W, C to T, C, H, W
             subsequence = subsequence.permute(0, 3, 1, 2)
             # transform each subsequence independently
-            if "wrist" in k or "hand" in k:
+            if ("wrist" in k) or ("hand" in k) or ("gripper" in k):
                 subsequence = self.no_aug_vision_transform(subsequence).float()
             else:
                 subsequence = self.vision_transform(subsequence).float()
