@@ -20,7 +20,6 @@ observation_space:
 datasets:
   vision_dataset:
     _target_: calvin_agent.datasets.disk_dataset.DiskDataset
-    name: ${datasets.vision_dataset._target_}
     key: "vis"
     save_format: "npz"
     batch_size: 32
@@ -33,7 +32,6 @@ datasets:
     num_workers: 2
   lang_dataset:
     _target_: calvin_agent.datasets.disk_dataset.DiskDataset
-    name: ${datasets.lang_dataset._target_}
     key: "lang"
     save_format: "npz"
     batch_size: 32

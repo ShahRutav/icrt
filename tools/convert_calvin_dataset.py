@@ -1,4 +1,5 @@
 import os
+from tqdm import tqdm
 import h5py
 import json
 import argparse
@@ -30,7 +31,14 @@ def main(args):
     dataset_config["train_split"] = 1.0 if args.split == "train" else 0.0
 
     dataroot = os.environ["CALVIN_DATAROOT"]
-    dataroot = os.path.join(dataroot, 'calvin_' + args.benchmark_name + '_dataset', "training" if args.split == "train" else "validation")
+    dirname = None
+    if args.benchmark_name == 'debug':
+        dirname =  'calvin_' + args.benchmark_name + '_dataset'
+    elif args.benchmark_name == 'D':
+        dirname = 'task_D_D'
+    else:
+        raise NotImplementedError
+    dataroot = os.path.join(dataroot, dirname, "training" if args.split == "train" else "validation")
 
     annotations = np.load(os.path.join(dataroot, "lang_annotations", "auto_lang_ann.npy"), allow_pickle=True).item()
     # ['language']['ann']: list of raw language
@@ -61,7 +69,9 @@ def main(args):
         episode_length_json = {}
         i = 0
 
-        for _i, ((start, end), ann) in enumerate(zip(annotations['info']['indx'], annotations['language']['task'])):
+        total = len(annotations['info']['indx'])  # Assuming both lists have the same length
+        # for _i, ((start, end), ann) in enumerate(tqdm(zip(annotations['info']['indx'], annotations['language']['task']), desc="Processing annotations")):
+        for _i, ((start, end), ann) in enumerate(tqdm(zip(annotations['info']['indx'], annotations['language']['task']), desc="Processing annotations", total=total)):
             ann = taskname2taskname(ann)
             if ann != task_id:
                 continue

@@ -49,13 +49,14 @@ def get_task_to_id_dict(dataroot, task_name, annotations):
 
 def get_env_datamodule(args):
     task_name = "task_D_D"
+    mode = "training" if args.mode == 'train' else 'validation'
     # task_name = "calvin_debug_dataset"
     confg_path = get_conf_path()
 
     datamodule_default = OmegaConf.load('./config/calvin/datamodule.yaml')
     datamodule_default.root_data_dir = os.path.join(os.environ["CALVIN_DATAROOT"], task_name)
-    datamodule_default.datasets.vision_dataset.datasets_dir = os.path.join(os.environ["CALVIN_DATAROOT"], task_name, 'validation')
-    datamodule_default.datasets.lang_dataset.datasets_dir = os.path.join(os.environ["CALVIN_DATAROOT"], task_name, 'validation')
+    datamodule_default.datasets.vision_dataset.datasets_dir = os.path.join(os.environ["CALVIN_DATAROOT"], task_name, mode)
+    datamodule_default.datasets.lang_dataset.datasets_dir = os.path.join(os.environ["CALVIN_DATAROOT"], task_name, mode)
     datamodule_default = OmegaConf.create(datamodule_default)
 
     print(OmegaConf.to_yaml(datamodule_default))
@@ -75,7 +76,7 @@ def get_env_datamodule(args):
     # base path is calvin/calvin_models/conf
     rollout_cfg = OmegaConf.load(os.path.join(get_conf_path(), "callbacks/rollout/default.yaml"))
     env = hydra.utils.instantiate(rollout_cfg.env_cfg, dataset, device, show_gui=False)
-    return env, data_module, os.path.join(os.environ["CALVIN_DATAROOT"], task_name, 'validation')
+    return env, data_module, os.path.join(os.environ["CALVIN_DATAROOT"], task_name, mode)
 
 def visualize_trajectory(obs):
     # for d in obs:
@@ -251,7 +252,7 @@ def evaluate_policy_singlestep(env, icrt, datamodule, dataroot, args):
 def main(args):
     datamodule = None
     data_name = "task_D_D"
-    dataroot = os.path.join(os.environ["CALVIN_DATAROOT"], data_name, 'validation')
+    dataroot = os.path.join(os.environ["CALVIN_DATAROOT"], data_name, 'training' if args.mode=='train' else 'validation')
     # env = get_env(dataroot, show_gui=False)
     env, datamodule, dataroot = get_env_datamodule(args)
     env.reset()
@@ -274,6 +275,7 @@ if __name__ == '__main__':
     parser.add_argument("--train_yaml_path", type=str, required=True)
     parser.add_argument("--vision_encoder_path", type=str, default=None)
     parser.add_argument("--n_eval", type=int, default=10)
+    parser.add_argument("--mode", type=str, default="val")
     parser.add_argument("--n_prompt", type=int, default=1)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--use_gt", action="store_true")

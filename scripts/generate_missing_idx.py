@@ -1,5 +1,6 @@
-# ls /mnt/nfs_client/calvin/task_D_D/training/ | grep episode | awk -F '_' '{print $2}' | awk -F '.' '{print $1}' > /mnt/nfs_client/calvin/task_D_D/training/id_list.txt
+import os
 import numpy as np
+# ls /mnt/nfs_client/calvin/task_D_D/training/ | grep episode | awk -F '_' '{print $2}' | awk -F '.' '{print $1}' > /mnt/nfs_client/calvin/task_D_D/training/id_list.txt
 def process_numbers(file_name, scene_info_path):
     # Read numbers from the file
     with open(file_name, 'r') as file:
@@ -26,9 +27,11 @@ def process_numbers(file_name, scene_info_path):
     print(f"Maximum number: {max_num}")
     print(f"Length Missing numbers: {len(missing_numbers)}; Existing numbers: {len(numbers)}")
 
-mode = "training"
-scene_info_location = f"/mnt/nfs_client/calvin/task_D_D/{mode}/scene_info.npy"
-list_path = f"/mnt/nfs_client/calvin/task_D_D/{mode}/id_list.txt"
+mode = "validation"
+base_path = "/mnt/data1/rutavms/calvin"
+# base_path = "/mnt/nfs_client/calvin"
+scene_info_location = os.path.join(base_path, f'task_D_D/{mode}/scene_info.npy')
+list_path = os.path.join(base_path, f'task_D_D/{mode}/id_list.txt')
 # Replace 'D_id_list.txt' with the actual file name
 process_numbers(list_path, scene_info_path=scene_info_location)
 
