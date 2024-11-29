@@ -31,7 +31,7 @@ class SequenceDataset(torch.utils.data.Dataset):
     maximum_length : int = 450
 
     # remove long tail situations
-    min_demos : int = 2 # TODO: Change this to 4
+    min_demos : int = 1 # TODO: Change this to 4
 
     def __init__(
         self,
@@ -152,6 +152,7 @@ class SequenceDataset(torch.utils.data.Dataset):
         # if sort by lang, we first shuffle the task permutation and then the episodes
         # this ensures that for most indices, there's no overlap between tasks
         self.sort_by_lang = dataset_config.sort_by_lang
+        self.start_from_beginning = dataset_config.start_from_beginning
 
         if self.split == "val":
             self.min_demos = 1
@@ -205,11 +206,13 @@ class SequenceDataset(torch.utils.data.Dataset):
 
         # non overlapping subsequence?
         self.non_overlapping : Union[bool, int] = dataset_config.non_overlapping
+        if self.start_from_beginning:
+            assert not self.non_overlapping, "Non overlapping subsequence is not supported with start from beginning"
 
         # enable repeating trajectory so that it can learn the copying behavior
         self.num_repeat_traj = dataset_config.num_repeat_traj
-        if split == 'val':
-            self.num_repeat_traj = 1 # do not repeat for validation
+        # if split == 'val':
+        #     self.num_repeat_traj = 1 # do not repeat for validation
 
         # define use delta action flag
         self.use_delta_action = shared_config.use_delta_action
@@ -404,6 +407,7 @@ class SequenceDataset(torch.utils.data.Dataset):
             episode_keys = [self.verb_to_episode[v][i] for i in indices]
             task_length = sum([self.epi_len_mapping_json[key] * r for key, r in zip(episode_keys, repeats)])
             if task_length < self.seq_length:
+                print("SKIPPING VERB: ", v)
                 continue
 
             # initialize the current step index for the verb
@@ -419,6 +423,7 @@ class SequenceDataset(torch.utils.data.Dataset):
                     ranges.append((start_idx, start_idx + trajectory_length)) # (inclusive, exclusive)
                     start_idx += trajectory_length
 
+            valid_start_index_th = 5
             for key, num_repeat in zip(episode_keys, repeats):
                 for repeat_i in range(num_repeat):
                     for s in range(self.epi_len_mapping_json[key]):
@@ -426,6 +431,7 @@ class SequenceDataset(torch.utils.data.Dataset):
                             {
                                 "episode_id" : key,
                                 "step" : s,
+                                "start": s <= valid_start_index_th,
                                 "eos" : s == self.epi_len_mapping_json[key] - 1,
                             }
                         )
@@ -433,10 +439,16 @@ class SequenceDataset(torch.utils.data.Dataset):
                         # if verb_step_idx + self.seq_length == self.verb_to_numsteps, it means that
                         # we have reached the end of the task, and we shouldn't include the next step
                         if self.task_barrier and verb_step_idx + self.seq_length > task_length:
+                            # self.seq_length - 1 number of steps are not usable for each verb
                             continue
                         else:
                             # update the verb to idx mapping
-                            verb_to_idx[v].append(len(self.steps) + verb_step_idx)
+                            if self.start_from_beginning:
+                                # only add the first step of the episode to the usable indices
+                                if s <= valid_start_index_th:
+                                    verb_to_idx[v].append(len(self.steps) + verb_step_idx)
+                            else:
+                                verb_to_idx[v].append(len(self.steps) + verb_step_idx)
                         verb_step_idx += 1
 
             # shuffle cache based on ranges
@@ -494,6 +506,9 @@ class SequenceDataset(torch.utils.data.Dataset):
             index = self.usable_indices[index]
 
         subseq = self.steps[index : index + self.seq_length + self.num_pred_steps - 1]
+        ######## TODO: Remove this assert after sanity checking
+        if self.start_from_beginning: assert subseq[0]["start"], "Start from beginning is set to True, but the first step is not the start of the episode"
+        ########
         eos = np.array([s["eos"] for s in subseq]) # (seq_length + num_pred_steps - 1, 1)
         eos = torch.from_numpy(eos).float()
         start_end_epi = defaultdict(list)

@@ -17,6 +17,9 @@ class DatasetConfig:
     # Order the data episodes by language descriptions
     sort_by_lang : bool = True
 
+    # Start always from the beginning of the episode
+    start_from_beginning : bool = False
+
     # Enforce only one task is being seen in a batch
     task_barrier : bool = True
 
