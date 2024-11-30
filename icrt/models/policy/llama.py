@@ -403,7 +403,7 @@ class Transformer(nn.Module):
     @torch.inference_mode()
     def forward_inference(self, seq: torch.Tensor, start_pos: int, mask: Optional[torch.Tensor] = None):
         _, seqlen, _ = seq.shape
-        if start_pos + seqlen > self.freqs_cis.shape[0]:
+        if start_pos + seqlen > self.freqs_cos.shape[0]:
             # update positional embedding
             print(f"Updating positional embedding from length {self.freqs_cis.shape[0]} to length {self.freqs_cis.shape[0] * 2}")
             # self.freqs_cis = precompute_freqs_cis(

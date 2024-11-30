@@ -63,6 +63,10 @@ class DatasetConfig:
     action_traj_noise : bool = False
     # action_traj_noise_range : list[(float, float)] = [(-0.09, -0.07), (-0.05, -0.03), (-0.01, 0.01), (0.03, 0.05), (0.07, 0.09)]
 
+    # load the complete dataset in memory
+    load_in_mem: bool = False
+
+
     def __post_init__(self):
         # Ensure dataset_json is always stored as a list
         if isinstance(self.dataset_json, str):
