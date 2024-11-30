@@ -408,6 +408,8 @@ class SequenceDataset(torch.utils.data.Dataset):
             task_length = sum([self.epi_len_mapping_json[key] * r for key, r in zip(episode_keys, repeats)])
             if task_length < self.seq_length:
                 print("SKIPPING VERB: ", v)
+                if self.split == 'train':
+                    raise ValueError(f"Task length ({task_length}) is less than sequence length ({self.seq_length}) for verb {v}")
                 continue
 
             # initialize the current step index for the verb
@@ -440,15 +442,11 @@ class SequenceDataset(torch.utils.data.Dataset):
                         # we have reached the end of the task, and we shouldn't include the next step
                         if self.task_barrier and verb_step_idx + self.seq_length > task_length:
                             # self.seq_length - 1 number of steps are not usable for each verb
+                            verb_step_idx += 1
                             continue
                         else:
                             # update the verb to idx mapping
-                            if self.start_from_beginning:
-                                # only add the first step of the episode to the usable indices
-                                if s <= valid_start_index_th:
-                                    verb_to_idx[v].append(len(self.steps) + verb_step_idx)
-                            else:
-                                verb_to_idx[v].append(len(self.steps) + verb_step_idx)
+                            verb_to_idx[v].append(len(self.steps) + verb_step_idx)
                         verb_step_idx += 1
 
             # shuffle cache based on ranges
@@ -460,7 +458,20 @@ class SequenceDataset(torch.utils.data.Dataset):
                 # then shuffle the cache based on the ranges
                 cache = [cache[i] for r in ranges for i in range(r[0], r[1])]
             self.steps.extend(cache)
-        self.usable_indices = [idx for v in verb_to_idx.values() for idx in v]
+
+        if self.start_from_beginning:
+            self.usable_indices = [idx for v in verb_to_idx.values() for idx in v if self.steps[idx]["start"]]
+        else:
+            self.usable_indices = [idx for v in verb_to_idx.values() for idx in v]
+
+        total_faults = 0
+        for ind in self.usable_indices:
+            if not self.steps[ind]["start"]:
+                total_faults += 1
+                print(f"Warning: start is not set to True at index {ind} from episode {self.steps[ind]['episode_id']}")
+        print(f"Total faults: {total_faults}")
+        # import ipdb; ipdb.set_trace()
+
 
     def __len__(self):
         """
@@ -506,9 +517,10 @@ class SequenceDataset(torch.utils.data.Dataset):
             index = self.usable_indices[index]
 
         subseq = self.steps[index : index + self.seq_length + self.num_pred_steps - 1]
-        ######## TODO: Remove this assert after sanity checking
-        if self.start_from_beginning: assert subseq[0]["start"], "Start from beginning is set to True, but the first step is not the start of the episode"
-        ########
+        # ######## TODO: Remove this assert after sanity checking
+        # if self.start_from_beginning:
+        #     assert subseq[0]["start"], f"Start from beginning is set to True, but the first step is not the start of the episode: {index}"
+        # ########
         eos = np.array([s["eos"] for s in subseq]) # (seq_length + num_pred_steps - 1, 1)
         eos = torch.from_numpy(eos).float()
         start_end_epi = defaultdict(list)
