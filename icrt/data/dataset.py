@@ -6,7 +6,7 @@ import torch
 import numpy as np
 import torchvision.transforms as transforms
 from typing import Union
-from .utils import euler_to_rot_6d, quat_to_rot_6d, euler_to_quat, load_json, convert_multi_step, convert_delta_action, find_increasing_subsequences, create_prompt_mask, scale_action
+from .utils import euler_to_rot_6d, quat_to_rot_6d, euler_to_quat, load_json, convert_multi_step, convert_delta_action, find_increasing_subsequences, create_prompt_mask, scale_action, load_entire_hdf5
 from icrt.util.args import DatasetConfig, SharedConfig
 from collections import defaultdict
 
@@ -63,7 +63,14 @@ class SequenceDataset(torch.utils.data.Dataset):
         assert len(dataset_path) == len(hdf5_keys), "Number of dataset paths and hdf5 keys must match"
 
         # create handles for the hdf5 files
+        hdf5_files = []
         hdf5_files = [h5py.File(h5_path, 'r') for h5_path in dataset_path]
+        if dataset_config.load_in_mem:
+            print("Loading the entire dataset in memory")
+            start_time = time.time()
+            hdf5_files = [load_entire_hdf5(f) for f in hdf5_files]
+            end_time = time.time()
+            print("Done loading the entire dataset in memory. Time taken: ", end_time - start_time)
 
         # load the hdf5_keys: list of keys for each hdf5 file
         self.hdf5_keys = [load_json(f) for f in hdf5_keys]
@@ -784,8 +791,16 @@ class SequenceDataset(torch.utils.data.Dataset):
         """
         # obtain the hdf5 file handle
         f_handle = self.keys_to_file[demo_id]
+
         # get the data from the hdf5 file
-        data = f_handle[demo_id][key][seq_begin_index:seq_end_index + 1]
+        key_split = key.split("/")
+        data = f_handle[demo_id]
+        for k in key_split:
+            data = data[k]
+        data = data[seq_begin_index:seq_end_index + 1]
+
+        # data = f_handle[demo_id][key][seq_begin_index:seq_end_index + 1]
+
         if 'image' in key:
             if 'episode' in demo_id:
                 data = np.frombuffer(data, dtype='uint8').reshape(-1,180,320,3)

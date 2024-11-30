@@ -49,6 +49,25 @@ def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0):
     freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
     return freqs_cis
 
+def precompute_freqs_sin_cos(dim: int, end: int, theta: float = 10000.0) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Precompute the sinusoidal frequencies for rotary embeddings.
+
+    Args:
+        dim (int): The head dimension.
+        end (int): The sequence length.
+        theta (float): The base of the exponential (default 10000.0).
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]: Cosine and sine tensors of shape (end, dim // 2).
+    """
+    freqs = 1.0 / (theta ** (torch.arange(0, dim, 2).float() / dim))
+    t = torch.arange(end, device=freqs.device)
+    angles = torch.outer(t, freqs).float()
+    freqs_cos = torch.cos(angles)
+    freqs_sin = torch.sin(angles)
+    return freqs_cos, freqs_sin
+
 
 def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
     ndim = x.ndim
@@ -58,11 +77,13 @@ def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor):
     return freqs_cis.view(*shape)
 
 
-def apply_rotary_emb(
+def apply_rotary_emb_old(
     xq: torch.Tensor,
     xk: torch.Tensor,
     freqs_cis: torch.Tensor,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
+    # xq, xk: (bs, n_local_heads, slen, head_dim); freqs_cis: (slen, head_dim)
+    # torch.Size([1, 256, 12, 64]) torch.Size([1, 256, 12, 64]) torch.Size([256, 32])
     xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
     xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
     freqs_cis = reshape_for_broadcast(freqs_cis, xq_)
@@ -70,6 +91,47 @@ def apply_rotary_emb(
     xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
     return xq_out.type_as(xq), xk_out.type_as(xk)
 
+def apply_rotary_emb(
+    xq: torch.Tensor,
+    xk: torch.Tensor,
+    freqs_cis: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Apply rotary embeddings to query and key tensors using complex sinusoidal frequencies.
+
+    Args:
+        xq (torch.Tensor): Query tensor of shape (batch, seq_len, num_heads, head_dim).
+        xk (torch.Tensor): Key tensor of shape (batch, seq_len, num_heads, head_dim).
+        freqs_cis (torch.Tensor): Complex sinusoidal frequencies of shape (seq_len, head_dim // 2).
+
+    Returns:
+        Tuple[torch.Tensor, torch.Tensor]: Transformed query and key tensors.
+    """
+    # Derive freqs_cos and freqs_sin from freqs_cis
+    # freqs_cos = freqs_cis.real
+    # freqs_sin = freqs_cis.imag
+    freqs_cos = freqs_cis[0]
+    freqs_sin = freqs_cis[1]
+
+    # Split xq and xk into real and imaginary parts
+    xq_r, xq_i = xq[..., ::2], xq[..., 1::2]
+    xk_r, xk_i = xk[..., ::2], xk[..., 1::2]
+
+    # Expand freqs_cos and freqs_sin to match xq_r and xq_i
+    freqs_cos = freqs_cos.unsqueeze(1).expand_as(xq_r)
+    freqs_sin = freqs_sin.unsqueeze(1).expand_as(xq_r)
+
+    # Apply rotary embeddings
+    xq_out_r = xq_r * freqs_cos - xq_i * freqs_sin
+    xq_out_i = xq_r * freqs_sin + xq_i * freqs_cos
+    xk_out_r = xk_r * freqs_cos - xk_i * freqs_sin
+    xk_out_i = xk_r * freqs_sin + xk_i * freqs_cos
+
+    # Combine real and imaginary parts into the output tensors
+    xq_out = torch.stack((xq_out_r, xq_out_i), dim=-1).flatten(-2)
+    xk_out = torch.stack((xk_out_r, xk_out_i), dim=-1).flatten(-2)
+
+    return xq_out.type_as(xq), xk_out.type_as(xk)
 
 class Attention(nn.Module):
     def __init__(self, args: ModelArgs):
@@ -332,9 +394,11 @@ class Transformer(nn.Module):
         #     params.dim, params.vocab_size, bias=False
         # )
 
-        self.freqs_cis = precompute_freqs_cis(
-            self.params.dim // self.params.n_heads, self.params.max_seq_len * 2
-        )
+        # self.freqs_cis = precompute_freqs_cis(
+        #     self.params.dim // self.params.n_heads, self.params.max_seq_len * 2
+        # )
+
+        self.freqs_cos, self.freqs_sin = precompute_freqs_sin_cos(self.params.dim // self.params.n_heads, self.params.max_seq_len * 2)
 
     @torch.inference_mode()
     def forward_inference(self, seq: torch.Tensor, start_pos: int, mask: Optional[torch.Tensor] = None):
@@ -342,11 +406,15 @@ class Transformer(nn.Module):
         if start_pos + seqlen > self.freqs_cis.shape[0]:
             # update positional embedding
             print(f"Updating positional embedding from length {self.freqs_cis.shape[0]} to length {self.freqs_cis.shape[0] * 2}")
-            self.freqs_cis = precompute_freqs_cis(
-                self.params.dim // self.params.n_heads, self.freqs_cis.shape[0] * 2
-            )
-        self.freqs_cis = self.freqs_cis.to(seq.device)
-        freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
+            # self.freqs_cis = precompute_freqs_cis(
+            #     self.params.dim // self.params.n_heads, self.freqs_cis.shape[0] * 2
+            # )
+            self.freqs_cos, self.freqs_sin = precompute_freqs_sin_cos(self.params.dim // self.params.n_heads, self.freqs_cos.shape[0] * 2)
+        # self.freqs_cis = self.freqs_cis.to(seq.device)
+        # freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
+        self.freqs_cos = self.freqs_cos.to(seq.device)
+        self.freqs_sin = self.freqs_sin.to(seq.device)
+        freqs_cis = self.freqs_cos[start_pos : start_pos + seqlen], self.freqs_sin[start_pos : start_pos + seqlen]
 
         if seqlen > 1:
             if mask is None:
@@ -379,8 +447,11 @@ class Transformer(nn.Module):
         seq: B, 2T-1, C
         """
         _, seqlen, _ = seq.shape
-        self.freqs_cis = self.freqs_cis.to(seq.device)
-        freqs_cis = self.freqs_cis[:seqlen]
+        # self.freqs_cis = self.freqs_cis.to(seq.device)
+        # freqs_cis = self.freqs_cis[:seqlen]
+        self.freqs_cos = self.freqs_cos.to(seq.device)
+        self.freqs_sin = self.freqs_sin.to(seq.device)
+        freqs_cis = self.freqs_cos[:seqlen], self.freqs_sin[:seqlen]
 
         if mask is None:
             mask = torch.full((1, 1, seqlen, seqlen), float("-inf"), device=seq.device)

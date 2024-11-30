@@ -1,8 +1,17 @@
+import h5py
 import torch
 from typing import Union, List, Tuple, Literal
 import json
 import numpy as np
 from scipy.spatial.transform import Rotation
+
+def load_entire_hdf5(dct):
+    if isinstance(dct, h5py.Dataset):
+        return dct[()]
+    ret = {}
+    for k, v in dct.items():
+        ret[k] = load_entire_hdf5(v)
+    return ret
 
 def rot_mat_to_rot_6d(rot_mat : np.ndarray) -> np.ndarray:
     """

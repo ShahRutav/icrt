@@ -128,7 +128,8 @@ def main(args : ExperimentConfig):
     # for resume, we need to instantiate new samplers
     resume_reload = args.shared_cfg.resume is not None
     if args.trainer_cfg.compile_model:
-        model = torch.compile(model)
+        model = torch.compile(model, fullgraph=True, mode='reduce-overhead')
+        # model = torch.compile(model, fullgraph=True, mode='max-autotune')
 
     for epoch in range(args.shared_cfg.start_epoch, args.trainer_cfg.epochs):
 
