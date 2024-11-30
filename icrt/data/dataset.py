@@ -470,7 +470,6 @@ class SequenceDataset(torch.utils.data.Dataset):
                 total_faults += 1
                 print(f"Warning: start is not set to True at index {ind} from episode {self.steps[ind]['episode_id']}")
         print(f"Total faults: {total_faults}")
-        # import ipdb; ipdb.set_trace()
 
 
     def __len__(self):
@@ -517,6 +516,7 @@ class SequenceDataset(torch.utils.data.Dataset):
             index = self.usable_indices[index]
 
         subseq = self.steps[index : index + self.seq_length + self.num_pred_steps - 1]
+        # episode_ids = [s["episode_id"].split('_')[-1] for s in subseq]
         # ######## TODO: Remove this assert after sanity checking
         # if self.start_from_beginning:
         #     assert subseq[0]["start"], f"Start from beginning is set to True, but the first step is not the start of the episode: {index}"

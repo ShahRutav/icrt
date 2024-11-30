@@ -71,7 +71,8 @@ class ICRTWrapper(nn.Module):
         timm_data_cfg = timm.data.resolve_data_config(model.vision_encoder.model.pretrained_cfg)
         self.preprocess = timm.data.create_transform(**timm_data_cfg)
         self.mean, self.std = timm_data_cfg["mean"], timm_data_cfg["std"]
-
+        print("self.mean: ", self.mean)
+        print("self.std: ", self.std)
         print("vision transform: ", self.preprocess)
         model.to(self.device)
 

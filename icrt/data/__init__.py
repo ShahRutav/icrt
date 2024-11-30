@@ -1,29 +1,37 @@
 import torch
 from .dataset import PlayDataset, SequenceDataset, CustomConcatDataset
 
-def get_dataset(args, dataset_kwargs):
+def get_dataset(args, dataset_kwargs, val_only=False, train_only=False):
     dataset_train, dataset_val = None, None
     if ('calvin' in args.dataset_cfg.dataset_json) and ('group' not in args.dataset_cfg.dataset_json):
-        dataset_train = PlayDataset(
-            split="train",
-            **dataset_kwargs
-        )
-        dataset_val = PlayDataset(
-            split="val",
-            **dataset_kwargs
-        )
+        dataset_train = []
+        if not val_only:
+            dataset_train = PlayDataset(
+                split="train",
+                **dataset_kwargs
+            )
+        dataset_val = []
+        if not train_only:
+            dataset_val = PlayDataset(
+                split="val",
+                **dataset_kwargs
+            )
     else:
-        dataset_train = SequenceDataset(
-            split="train",
-            **dataset_kwargs
-        )
-        dataset_val = SequenceDataset(
-            split="val",
-            **dataset_kwargs
-        )
+        dataset_train = []
+        if not val_only:
+            dataset_train = SequenceDataset(
+                split="train",
+                **dataset_kwargs
+            )
+        dataset_val = []
+        if not train_only:
+            dataset_val = SequenceDataset(
+                split="val",
+                **dataset_kwargs
+            )
     return dataset_train, dataset_val
 
-def load_datasets(args, vision_transform, no_aug_vision_transform):
+def load_datasets(args, vision_transform, no_aug_vision_transform, val_only=False, train_only=False):
     assert len(args.dataset_cfg.dataset_json) == len(args.dataset_cfg.dataset_val_json), "Number of train and val datasets should be the same: {} != {}".format(len(args.dataset_cfg.dataset_json), len(args.dataset_cfg.dataset_val_json))
     assert len(args.dataset_cfg.dataset_json) == len(args.dataset_cfg.num_repeat_traj), "Number of train datasets and num_repeat_traj should be the same: {} != {}".format(len(args.dataset_cfg.dataset_json), len(args.dataset_cfg.num_repeat_traj))
     if len(args.dataset_cfg.dataset_json) == 1:
@@ -38,7 +46,7 @@ def load_datasets(args, vision_transform, no_aug_vision_transform):
             "vision_transform": vision_transform,
             "no_aug_vision_transform": no_aug_vision_transform,
         }
-        dataset_train, dataset_val = get_dataset(args, dataset_kwargs)
+        dataset_train, dataset_val = get_dataset(args, dataset_kwargs, val_only, train_only)
         print("Length of dataset_train: ", len(dataset_train))
         print("Length of dataset_val: ", len(dataset_val))
         print("*"*20)
@@ -59,14 +67,16 @@ def load_datasets(args, vision_transform, no_aug_vision_transform):
                 "vision_transform": vision_transform,
                 "no_aug_vision_transform": no_aug_vision_transform,
             }
-            _dataset_train, _dataset_val = get_dataset(args, dataset_kwargs)
+            _dataset_train, _dataset_val = get_dataset(args, dataset_kwargs, val_only, train_only)
             print("Length of dataset_train: ", len(_dataset_train))
             print("Length of dataset_val: ", len(_dataset_val))
             print("*"*20)
             dataset_train_list.append(_dataset_train)
             dataset_val_list.append(_dataset_val)
-        dataset_train = CustomConcatDataset(dataset_train_list)
-        dataset_val = CustomConcatDataset(dataset_val_list)
+        if not val_only:
+            dataset_train = CustomConcatDataset(dataset_train_list)
+        if not train_only:
+            dataset_val = CustomConcatDataset(dataset_val_list)
 
         print("*"*20)
         print("Length of dataset_train: ", len(dataset_train))
