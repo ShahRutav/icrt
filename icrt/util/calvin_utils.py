@@ -2,6 +2,10 @@
 import os
 import json
 import numpy as np
+import calvin_agent
+
+def get_conf_path():
+    return os.path.join(calvin_agent.__path__[0], "../conf")
 
 def generate_dataset_paths(dataroot, start, end):
     dataset_paths = []

@@ -523,7 +523,10 @@ class SequenceDataset(torch.utils.data.Dataset):
             index = self.usable_indices[index]
 
         subseq = self.steps[index : index + self.seq_length + self.num_pred_steps - 1]
-        # episode_ids = [s["episode_id"].split('_')[-1] for s in subseq]
+        # total_episode_ids = set([s["episode_id"].split('_')[-1] for s in self.steps])
+        # episode_ids = set([s["episode_id"].split('_')[-1] for s in subseq])
+        # print("Episode ids: ", episode_ids)
+        # print("Total episode ids: ", total_episode_ids)
         # ######## TODO: Remove this assert after sanity checking
         # if self.start_from_beginning:
         #     assert subseq[0]["start"], f"Start from beginning is set to True, but the first step is not the start of the episode: {index}"

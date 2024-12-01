@@ -27,12 +27,10 @@ from calvin_agent.evaluation.utils import get_env_state_for_initial_condition
 from icrt.util.calvin_utils import \
     generate_dataset_paths, \
     get_subsequence, break_subsequence, \
+    get_conf_path, \
     taskname2taskname, get_initial_states
 from icrt.models.policy.icrt_wrapper import ICRTWrapper
 from icrt.util.eval_utils import EvalLogger
-
-def get_conf_path():
-    return os.path.join(calvin_agent.__path__[0], "../conf")
 
 def get_task_to_id_dict(dataroot, task_name, annotations):
     dataset_paths = []
