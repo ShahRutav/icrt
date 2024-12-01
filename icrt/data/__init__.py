@@ -1,9 +1,13 @@
 import torch
+from termcolor import colored
 from .dataset import PlayDataset, SequenceDataset, CustomConcatDataset
 
 def get_dataset(args, dataset_kwargs, val_only=False, train_only=False):
     dataset_train, dataset_val = None, None
-    if ('calvin' in args.dataset_cfg.dataset_json) and ('group' not in args.dataset_cfg.dataset_json):
+    # if ('calvin' in args.dataset_cfg.dataset_json) and ('group' not in args.dataset_cfg.dataset_json):
+    if 'play' in args.dataset_cfg.dataset_json:
+        # print in red that we are using PlayDataset
+        print(colored("Using PlayDataset", "red"))
         dataset_train = []
         if not val_only:
             dataset_train = PlayDataset(
@@ -17,6 +21,7 @@ def get_dataset(args, dataset_kwargs, val_only=False, train_only=False):
                 **dataset_kwargs
             )
     else:
+        print(colored("Using SequenceDataset", "red"))
         dataset_train = []
         if not val_only:
             dataset_train = SequenceDataset(
@@ -34,10 +39,12 @@ def get_dataset(args, dataset_kwargs, val_only=False, train_only=False):
 def load_datasets(args, vision_transform, no_aug_vision_transform, val_only=False, train_only=False):
     assert len(args.dataset_cfg.dataset_json) == len(args.dataset_cfg.dataset_val_json), "Number of train and val datasets should be the same: {} != {}".format(len(args.dataset_cfg.dataset_json), len(args.dataset_cfg.dataset_val_json))
     assert len(args.dataset_cfg.dataset_json) == len(args.dataset_cfg.num_repeat_traj), "Number of train datasets and num_repeat_traj should be the same: {} != {}".format(len(args.dataset_cfg.dataset_json), len(args.dataset_cfg.num_repeat_traj))
+    assert len(args.dataset_cfg.dataset_json) == len(args.dataset_cfg.non_overlapping), "Number of train datasets and non_overlapping should be the same: {} != {}".format(len(args.dataset_cfg.dataset_json), len(args.dataset_cfg.non_overlapping))
     if len(args.dataset_cfg.dataset_json) == 1:
         args.dataset_cfg.dataset_json = args.dataset_cfg.dataset_json[0]
         args.dataset_cfg.dataset_val_json = args.dataset_cfg.dataset_val_json[0]
         args.dataset_cfg.num_repeat_traj = args.dataset_cfg.num_repeat_traj[0]
+        args.dataset_cfg.non_overlapping = args.dataset_cfg.non_overlapping[0]
         print("*"*20)
         print(args.dataset_cfg.dataset_json)
         dataset_kwargs = {
@@ -55,10 +62,12 @@ def load_datasets(args, vision_transform, no_aug_vision_transform, val_only=Fals
         dataset_jsons = args.dataset_cfg.dataset_json
         dataset_val_json = args.dataset_cfg.dataset_val_json
         num_repeat_trajs = args.dataset_cfg.num_repeat_traj
-        for dataset_json, dataset_val_json, num_repeat_traj in zip(dataset_jsons, dataset_val_json, num_repeat_trajs):
+        non_overlapping = args.dataset_cfg.non_overlapping
+        for dataset_index, (dataset_json, dataset_val_json) in enumerate(zip(dataset_jsons, dataset_val_json)):
             args.dataset_cfg.dataset_json = dataset_json
             args.dataset_cfg.dataset_val_json = dataset_val_json
-            args.dataset_cfg.num_repeat_traj = num_repeat_traj
+            args.dataset_cfg.num_repeat_traj = num_repeat_trajs[dataset_index]
+            args.dataset_cfg.non_overlapping = non_overlapping[dataset_index]
             print("*"*20)
             print(dataset_json)
             dataset_kwargs = {

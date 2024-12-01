@@ -42,7 +42,7 @@ class DatasetConfig:
     rebalance_tasks : bool = True
 
     # each batch contains data that is non overlapping (i.e. for each epoch the same state action does not appear twice)
-    non_overlapping : Union[bool, int] = False
+    non_overlapping : Union[bool, int, list[int]] = False
 
     # enable repeats of trajectory
     num_repeat_traj : Union[int, list[int]] = 2
@@ -75,6 +75,8 @@ class DatasetConfig:
             self.dataset_val_json = [self.dataset_val_json]
         if isinstance(self.num_repeat_traj, int):
             self.num_repeat_traj = [self.num_repeat_traj]
+        if isinstance(self.non_overlapping, int):
+            self.non_overlapping = [self.non_overlapping]
 
 @dataclasses.dataclass
 class VisionEncoderConfig:

@@ -11,6 +11,10 @@ from icrt.util.args import DatasetConfig, SharedConfig
 from collections import defaultdict
 
 class CustomConcatDataset(torch.utils.data.ConcatDataset):
+    def __init__(self, *args, **kwargs):
+        super(CustomConcatDataset, self).__init__(*args, **kwargs)
+        self.balanced_sampling_weights = self.weights_for_balanced_classes()
+
     def save_split(self, *args, **kwargs):
         for dataset in self.datasets:
             dataset.save_split(*args, **kwargs)
@@ -22,6 +26,16 @@ class CustomConcatDataset(torch.utils.data.ConcatDataset):
         for dataset in self.datasets:
             dataset.shuffle_dataset(seed=seed)
         return
+    def weights_for_balanced_classes(self):
+        """
+        Return the weights for balanced classes
+            - Weights are inversely proportional to the size of the dataset
+        """
+        weights = [ 1000.0/len(dataset) for dataset in self.datasets for _ in range(len(dataset)) ]
+        # multinomial distribution does not require normalization
+        # sum_weights = sum(weights)
+        # weights = [ w / sum_weights for w in weights ]
+        return weights
 
 class SequenceDataset(torch.utils.data.Dataset):
 

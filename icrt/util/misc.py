@@ -400,6 +400,60 @@ def add_weight_decay(model, weight_decay=1e-5, skip_list=()):
         {'params': no_decay, 'weight_decay': 0.},
         {'params': decay, 'weight_decay': weight_decay}]
 
+class DistributedWeightedSubEpochSampler(torch.utils.data.Sampler):
+    """
+        This is an extension of DistributedSubEpochSampler that can sample based on assigned weights.
+    """
+    def __init__(self, dataset, num_replicas, rank, shuffle, split_epoch=1, seed=0, weights=None):
+        self.dataset = dataset
+        self.num_replicas = num_replicas
+        self.rank = rank
+        self.shuffle = shuffle
+        self.split_epoch = split_epoch
+        self.seed = seed
+
+        self.epoch = 0
+
+        self.num_samples = len(dataset) // (num_replicas * split_epoch)
+
+        if weights is not None:
+            assert len(weights) == len(dataset)
+            self.weights = torch.tensor(weights, dtype=torch.float32)
+        else:
+            self.weights = None
+
+    def __len__(self):
+        return self.num_samples
+
+    def __iter__(self):
+        g = torch.Generator()
+        g.manual_seed(self.seed + self.epoch // self.split_epoch)
+        if self.weights is not None:
+            all_indices = None
+            if self.shuffle:
+                all_indices = torch.randperm(len(self.dataset), generator=g).tolist()
+            else:
+                all_indices = list(range(len(self.dataset)))
+            worker_indices = all_indices[self.rank * self.split_epoch + self.epoch % self.split_epoch::self.num_replicas * self.split_epoch]
+            worker_weights = self.weights[worker_indices]
+            indices = torch.multinomial(worker_weights, self.num_samples, replacement=True, generator=g).tolist()
+            indices = [worker_indices[i] for i in indices]
+        elif self.shuffle:
+            # deterministically shuffle based on epoch and seed
+            indices = torch.randperm(len(self.dataset), generator=g).tolist()  # type: ignore[arg-type]
+            indices = indices[self.rank * self.split_epoch + self.epoch % self.split_epoch::self.num_replicas * self.split_epoch]
+            assert len(indices) >= self.num_samples
+            indices = indices[:self.num_samples]
+        else:
+            indices = list(range(len(self.dataset)))  # type: ignore[arg-type]
+            indices = indices[self.rank * self.split_epoch + self.epoch % self.split_epoch::self.num_replicas * self.split_epoch]
+            assert len(indices) >= self.num_samples
+            indices = indices[:self.num_samples]
+
+        return iter(indices)
+
+    def set_epoch(self, epoch):
+        self.epoch = epoch
 
 class DistributedSubEpochSampler(torch.utils.data.Sampler):
 

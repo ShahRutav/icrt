@@ -16,7 +16,7 @@ import timm
 from timm.data.loader import MultiEpochsDataLoader
 
 from icrt.data import load_datasets
-from icrt.data.dataset import SequenceDataset, PlayDataset
+from icrt.data.dataset import SequenceDataset, PlayDataset, CustomConcatDataset
 
 import icrt.util.misc as misc
 from icrt.util.misc import NativeScalerWithGradNormCount as NativeScaler
@@ -137,13 +137,31 @@ def main(args : ExperimentConfig):
             print(f"Shuffling sequences every {args.shared_cfg.split_epoch} epochs, epoch: {epoch}")
             dataset_train.shuffle_dataset(epoch)
             dataset_val.shuffle_dataset(epoch)
+            train_weights, val_weights = None, None
+            if isinstance(dataset_train, CustomConcatDataset):
+                train_weights = dataset_train.balanced_sampling_weights
+            if isinstance(dataset_val, CustomConcatDataset):
+                val_weights = dataset_val.balanced_sampling_weights
             print("Recreating dataloaders ...")
-            sampler_train = misc.DistributedSubEpochSampler(
-                dataset_train, num_replicas=num_tasks, rank=global_rank, split_epoch=args.shared_cfg.split_epoch, shuffle=True
-            )
-            sampler_val = misc.DistributedSubEpochSampler(
-                dataset_val, num_replicas=num_tasks, rank=global_rank, split_epoch=args.shared_cfg.split_epoch, shuffle=False
-            )
+            sampler_train, sampler_val = None, None
+            if train_weights is not None:
+                print("Using distributed weighted sub epoch sampler for training")
+                sampler_train = misc.DistributedWeightedSubEpochSampler(
+                    dataset_train, num_replicas=num_tasks, rank=global_rank, split_epoch=args.shared_cfg.split_epoch, shuffle=True
+                )
+            else:
+                sampler_train = misc.DistributedSubEpochSampler(
+                    dataset_train, num_replicas=num_tasks, rank=global_rank, split_epoch=args.shared_cfg.split_epoch, shuffle=True
+                )
+            if val_weights is not None:
+                print("Using distributed weighted sub epoch sampler for val")
+                sampler_val = misc.DistributedWeightedSubEpochSampler(
+                    dataset_val, num_replicas=num_tasks, rank=global_rank, split_epoch=args.shared_cfg.split_epoch, shuffle=False
+                )
+            else:
+                sampler_val = misc.DistributedSubEpochSampler(
+                    dataset_val, num_replicas=num_tasks, rank=global_rank, split_epoch=args.shared_cfg.split_epoch, shuffle=False
+                )
             print("Sampler_train = %s" % str(sampler_train))
             print("length of train sampler: ", len(sampler_train))
             print("Sampler_val = %s" % str(sampler_val))

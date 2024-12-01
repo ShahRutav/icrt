@@ -251,7 +251,7 @@ def create_prompt_mask(eos_vector, num_steps):
     eos_position = sorted(np.where(eos_vector == 1)[0])
     if len(eos_position) == 0:
         return np.zeros_like(eos_vector), np.ones_like(eos_vector)
-    #randomly select a position to mask
+    ## randomly select a position to mask
     ## Why remove the first eos position?
     # if len(eos_position) >1:
     #     eos_position = eos_position[1:]
