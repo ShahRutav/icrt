@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 import time
 import h5py
 import argparse
@@ -7,29 +6,53 @@ import yaml
 import numpy as np
 from PIL import Image
 from easydict import EasyDict
-import torch
-import torch.nn as nn
-import timm
 from tqdm import trange
 from collections import Counter
 from termcolor import colored
+from collections import defaultdict
+from pathlib import Path
 
+import timm
 import hydra
+import torch
+import torch.nn as nn
 from pathlib import Path
 from omegaconf import OmegaConf
 
+from pytorch_lightning import seed_everything
+
 import calvin_agent
 from calvin_env.envs.play_table_env import get_env
-from calvin_agent.evaluation.utils import get_env_state_for_initial_condition
+from calvin_agent.evaluation.multistep_sequences import get_sequences
+from calvin_agent.evaluation.utils import (
+    collect_plan,
+    count_success,
+    create_tsne,
+    get_default_model_and_env,
+    get_env_state_for_initial_condition,
+    get_log_dir,
+    join_vis_lang,
+    print_and_save,
+)
 
-from icrt.util.calvin_utils import \
-    generate_dataset_paths, \
-    get_subsequence, break_subsequence, \
-    get_conf_path, \
-    taskname2taskname, get_initial_states
+from icrt.util.calvin_utils import (
+    generate_dataset_paths,
+    get_subsequence, break_subsequence,
+    get_conf_path,
+    taskname2taskname,
+    get_initial_states
+)
 from icrt.data import load_datasets
 from icrt.models.policy.icrt_wrapper import ICRTWrapper
-from icrt.util.eval_utils import EvalLogger
+from icrt.util.eval_utils import EvalLogger, visualize_trajectory
+
+def make_env(dataset_path, obs_space=None, show_gui=False):
+    val_folder = Path(dataset_path)
+    env = get_env(val_folder, obs_space=obs_space, show_gui=show_gui)
+
+    # insert your own env wrapper
+    # env = Wrapper(env)
+    return env
 
 def get_env_datamodule(args):
     task_name = "task_D_D"
@@ -180,7 +203,10 @@ def preprocess_obs(obs):
 
 def rollout(icrt, env, initial_state, task_oracle, task, args, gt_actions=None, gt_obs=None, gt_proprio=None, use_gt=False):
     # state_obs, rgb_obs, depth_obs = episode["robot_obs"], episode["rgb_obs"], episode["depth_obs"]
-    obs = env.reset(**initial_state)
+    if initial_state is not None:
+        obs = env.reset(**initial_state)
+    else:
+        obs = env.get_obs()
     # get lang annotation for subtask
     # lang_annotation = val_annotations[task][0]
 
@@ -195,8 +221,14 @@ def rollout(icrt, env, initial_state, task_oracle, task, args, gt_actions=None, 
 
         ##### ICRT PREPARATION #####
         obs = preprocess_obs(obs)
-        side_image = Image.fromarray(obs['rgb_obs']["rgb_static"].astype(np.uint8).transpose(1, 2, 0))
-        wrist_image = Image.fromarray(obs["rgb_obs"]["rgb_gripper"].astype(np.uint8).transpose(1, 2, 0))
+        side_image = obs["rgb_obs"]["rgb_static"].astype(np.uint8)
+        wrist_image = obs["rgb_obs"]["rgb_gripper"].astype(np.uint8)
+        if not isinstance(side_image, Image.Image):
+            if side_image.shape[0] == 3:
+                side_image = side_image.transpose(1, 2, 0)
+                wrist_image = wrist_image.transpose(1, 2, 0)
+            side_image = Image.fromarray(side_image)
+            wrist_image = Image.fromarray(wrist_image)
         assert len(obs["robot_obs"].shape) == 1
         proprio = np.concatenate([obs["robot_obs"][:6], obs["robot_obs"][-1:]], axis=0)
         pred_action = icrt(
@@ -226,14 +258,19 @@ def rollout(icrt, env, initial_state, task_oracle, task, args, gt_actions=None, 
 
         # this loss will be much higher if pred_action is not using ground truth observations as the trajectories are a bit different
         loss_val = 0.0
-        if step < len(gt_actions):
-            loss_val = loss(torch.tensor(pred_action), torch.tensor(gt_actions[step])).item()
-        else:
-            loss_val = loss(torch.tensor(pred_action), torch.tensor(gt_actions[-1])).item()
+        if gt_actions is not None:
+            if (step < len(gt_actions)):
+                loss_val = loss(torch.tensor(pred_action), torch.tensor(gt_actions[step])).item()
+            else:
+                loss_val = loss(torch.tensor(pred_action), torch.tensor(gt_actions[-1])).item()
         avg_loss += loss_val
         # print(loss_val)
 
+        print(f"Step: {step}, Loss: {loss_val:.3f}, action: {action}")
+        # import ipdb; ipdb.set_trace()
+        action[-1] = 1 if action[-1] > 0 else -1
         obs, _, _, current_info = env.step(action)
+        # import ipdb; ipdb.set_trace()
         if args.debug:
             img = env.render()
             time.sleep(0.05)
@@ -304,13 +341,109 @@ def evaluate_policy_singlestep(env, icrt, prompt_dict, args):
     print(f"SR: {sum(results.values()) / total_trajs * 100:.1f}%")
     return
 
+def evaluate_sequence(env, icrt, task_oracle, initial_state, eval_sequence, val_annotations, plans, args):
+    """
+    Evaluates a sequence of language instructions.
+    """
+    robot_obs, scene_obs = get_env_state_for_initial_condition(initial_state)
+    env.reset(robot_obs=robot_obs, scene_obs=scene_obs)
+
+    success_counter = 0
+    if args.debug:
+        time.sleep(1)
+        print()
+        print()
+        print(f"Evaluating sequence: {' -> '.join(eval_sequence)}")
+        print("Subtask: ", end="")
+    for subtask in eval_sequence:
+        # find the correct prompt for the subtask
+        print(subtask, end=" ")
+        task_dataset_path = [path for path in args.dataset_paths if subtask in path]
+        print(task_dataset_path)
+        assert len(task_dataset_path) == 1, f"Task dataset path not found for {subtask}. Task dataset path: {task_dataset_path}"
+        data = load_hdf5(task_dataset_path[0])
+        prompt_side_images, prompt_wrist_images, prompt_proprios, prompt_actions = get_prompt(data, subtask, args.n_prompt)
+        # visualize_trajectory(prompt_side_images)
+        prompt_dict = {
+            "side_image": prompt_side_images,
+            "wrist_image": prompt_wrist_images,
+            "proprio": prompt_proprios,
+            "action": prompt_actions
+        }
+        icrt.reset()
+        icrt.prompt(**prompt_dict)
+        success = rollout(
+            icrt=icrt,
+            env=env,
+            initial_state=None, # we pass it as None so that we do not reset the environment for each subtask
+            task_oracle=task_oracle,
+            task=subtask,
+            args=args,
+        )
+            #val_annotations, plans, debug)
+        if success:
+            success_counter += 1
+        else:
+            return success_counter
+    return success_counter
+
+def evaluate_policy(icrt, env, args):
+    """
+    Run this function to evaluate a model on the CALVIN challenge.
+
+    Args:
+        model: Must implement methods of CalvinBaseModel.
+        env: (Wrapped) calvin env.
+        debug: If True, show camera view and debug info.
+        create_plan_tsne: Collect data for TSNE plots of latent plans (does not work for your custom model)
+
+    Returns:
+        Dictionary with results
+    """
+    conf_dir = get_conf_path()
+    task_cfg = OmegaConf.load(os.path.join(conf_dir, "callbacks/rollout/tasks/new_playtable_tasks.yaml"))
+    task_oracle = hydra.utils.instantiate(task_cfg)
+    val_annotations = OmegaConf.load(os.path.join(conf_dir,"annotations/new_playtable_validation.yaml"))
+
+    NUM_SEQUENCES = 5
+    eval_sequences = get_sequences(NUM_SEQUENCES)
+
+    results = []
+    plans = defaultdict(list)
+
+    if not args.debug:
+        eval_sequences = tqdm(eval_sequences, position=0, leave=True)
+
+    for initial_state, eval_sequence in eval_sequences:
+        result = evaluate_sequence(
+            env=env,
+            icrt=icrt,
+            task_oracle=task_oracle,
+            initial_state=initial_state,
+            eval_sequence=eval_sequence,
+            val_annotations=val_annotations,
+            plans=plans, args=args,
+        )
+        results.append(result)
+        if not args.debug:
+            eval_sequences.set_description(
+                " ".join([f"{i + 1}/5 : {v * 100:.1f}% |" for i, v in enumerate(count_success(results))]) + "|"
+            )
+
+    return results
+
+
 def main(args):
     # Load the config file
     with open(args.cfg_path, 'r') as f:
         cfg = yaml.safe_load(f)
     dataset_paths = cfg['dataset_path']
+    args.dataset_paths = dataset_paths
+    print(colored(f"Dataset paths: {dataset_paths}", "yellow"))
     task_name = args.task_name
-    dataset_paths = [path for path in dataset_paths if task_name in path]
+    dataset_paths = []
+    if task_name is not None:
+        dataset_paths = [path for path in dataset_paths if task_name in path]
 
     checkpoint_path = args.ckpt_path
     train_yaml_path = args.train_yaml_path
@@ -356,10 +489,13 @@ def main(args):
 
 
     # Load the dataset
-    assert len(dataset_paths) > 0, f"No dataset paths found for task {task_name} in {args.mode} mode. Exiting..."
-    data = load_hdf5(dataset_paths[0]) # only 0th dataset for now
-    prompt_side_images, prompt_wrist_images, prompt_proprios, prompt_actions = get_prompt(data, task_name, args.n_prompt)
     if False:
+        assert args.task_name is not None, "Task name must be provided for evaluation of single step task"
+        assert len(dataset_paths) > 0, f"No dataset paths found for task {task_name} in {args.mode} mode. Exiting..."
+        raise NotImplementedError("Single step evaluation check the dataset paths argument here")
+        data = load_hdf5(dataset_paths[0]) # only 0th dataset for now
+        prompt_side_images, prompt_wrist_images, prompt_proprios, prompt_actions = get_prompt(data, task_name, args.n_prompt)
+
         total_loss = 0
         loss_calc_index = 0
         for index in range(0, len(data.keys())):
@@ -413,34 +549,45 @@ def main(args):
     obs_space = {
         "rgb_obs": ["rgb_static", "rgb_gripper"],
         "depth_obs": [],
-        "robot_obs": []
+        "state_obs": ["robot_obs"],
+        "actions": ["actions"],
+        "language": ["language"]
     }
-    # env = get_env(dataroot, obs_space=obs_space, show_gui=False)
-    env, datamodule, dataroot = get_env_datamodule(args)
-    env.reset()
-    # env.reset()
+    if False: # this is the MTLC baseline. There could be bias in initial conditions and the task
+        env, datamodule, dataroot = get_env_datamodule(args)
+        env.reset()
+        # env.reset()
 
-    # Evaluate the model
-    prompt_dict = {
-        "side_image": prompt_side_images,
-        "wrist_image": prompt_wrist_images,
-        "proprio": prompt_proprios,
-        "action": prompt_actions
-    }
-    evaluate_policy_singlestep(env, icrt, prompt_dict, args)
+        # Evaluate the model
+        prompt_dict = {
+            "side_image": prompt_side_images,
+            "wrist_image": prompt_wrist_images,
+            "proprio": prompt_proprios,
+            "action": prompt_actions
+        }
+        evaluate_policy_singlestep(env, icrt, prompt_dict, args)
+
+    if True:
+        # env = make_env(dataroot, obs_space=obs_space, show_gui=False)
+        env, datamodule, dataroot = get_env_datamodule(args)
+        results = evaluate_policy(icrt, env, args)
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("--ckpt_path", type=str, required=True)
-    parser.add_argument("--train_yaml_path", type=str, required=True)
+    parser.add_argument("--train_yaml_path", type=str, default=None)
     parser.add_argument("--cfg_path", type=str, required=True, help="path to the config file with the dataset paths")
     parser.add_argument("--vision_encoder_path", type=str, default=None)
-    parser.add_argument("--task_name", type=str, required=True)
+    parser.add_argument("--task_name", type=str, required=False)
     parser.add_argument("--n_prompt", type=int, default=1)
     parser.add_argument("--mode", type=str, default="train")
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--use_gt", action="store_true")
+    parser.add_argument("--seed", type=int, default=0)
     args = parser.parse_args()
+    if args.train_yaml_path is None:
+        args.train_yaml_path = '/'.join(args.ckpt_path.split('/')[:-1] + ['run.yaml'])
+    seed_everything(args.seed, workers=True)
     args.ep_len = 150
 
     main(args)

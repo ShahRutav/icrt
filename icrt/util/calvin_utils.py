@@ -14,6 +14,13 @@ def generate_dataset_paths(dataroot, start, end):
         dataset_paths.append(episode_path)
     return dataset_paths
 
+def generate_dataset_paths_from_indices(dataroot, indices):
+    dataset_paths = []
+    for i in indices:
+        episode_path = os.path.join(dataroot, f"episode_{i:07d}.npz")
+        dataset_paths.append(episode_path)
+    return dataset_paths
+
 def get_subsequence(state_paths):
     # find the dataset index
     subsequence = []

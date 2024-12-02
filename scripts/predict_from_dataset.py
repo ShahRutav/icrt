@@ -45,7 +45,8 @@ benchmark_map = {
     "libero_single": "LIBERO_SINGLE",
 }
 
-HDF5_BASE_DIR = "/mnt/data1/rutavms/data/libero/icrt/libero_goal/"
+# HDF5_BASE_DIR = "/mnt/data1/rutavms/data/libero/icrt/libero_goal/"
+HDF5_BASE_DIR = "/home/rutavms/data/icrt/libero_goal/"
 
 def set_color(env, link_names, color):
     for link_name in link_names:
@@ -235,7 +236,7 @@ def main(args):
 
     checkpoint_path = args.ckpt_path
     train_yaml_path = args.train_yaml_path
-    vision_encoder_path = args.vision_encoder_path if args.vision_encoder_path is not None else '/home/rutavms/research/gaze/icrt/checkpoints/crossmae_rtx/cross-mae-rtx-vitb.pth'
+    vision_encoder_path = args.vision_encoder_path #if args.vision_encoder_path is not None else '/home/rutavms/research/gaze/icrt/checkpoints/crossmae_rtx/cross-mae-rtx-vitb.pth'
     icrt = ICRTWrapper(train_yaml_path, checkpoint_path, vision_encoder_path)
     resolution = (224, 224, 3)
 
@@ -268,14 +269,14 @@ def main(args):
 
 
     task_name = args.task_name
-    if False:
+    if True:
         dataset_path = os.path.join(HDF5_BASE_DIR, f"{task_name}_demo_icrt.hdf5")
         if args.change_robot_color:
             dataset_path = dataset_path.replace("icrt.hdf5", f"icrt_{color_name}.hdf5")
         if args.change_obj_color:
             dataset_path = dataset_path.replace("icrt.hdf5", f"icrt_{obj_color_name}.hdf5")
         data = h5py.File(dataset_path, "r")
-        episode_name = f"task_{task_name}_demo_1"
+        episode_name = f"task_{task_name}_demo_2"
         print("selected episode: ", episode_name)
 
         obs_dict = get_data_from_h5(data, episode_name, resolution, return_PIL_images=True)

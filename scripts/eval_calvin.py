@@ -24,13 +24,15 @@ import calvin_agent
 from calvin_env.envs.play_table_env import get_env
 from calvin_agent.evaluation.utils import get_env_state_for_initial_condition
 
-from icrt.util.calvin_utils import \
-    generate_dataset_paths, \
-    get_subsequence, break_subsequence, \
-    get_conf_path, \
-    taskname2taskname, get_initial_states
+from icrt.util.calvin_utils import (
+    generate_dataset_paths,
+    get_subsequence, break_subsequence,
+    get_conf_path,
+    taskname2taskname,
+    get_initial_states
+)
 from icrt.models.policy.icrt_wrapper import ICRTWrapper
-from icrt.util.eval_utils import EvalLogger
+from icrt.util.eval_utils import EvalLogger, visualize_trajectory
 
 def get_task_to_id_dict(dataroot, task_name, annotations):
     dataset_paths = []
@@ -75,26 +77,6 @@ def get_env_datamodule(args):
     rollout_cfg = OmegaConf.load(os.path.join(get_conf_path(), "callbacks/rollout/default.yaml"))
     env = hydra.utils.instantiate(rollout_cfg.env_cfg, dataset, device, show_gui=False)
     return env, data_module, os.path.join(os.environ["CALVIN_DATAROOT"], task_name, mode)
-
-def visualize_trajectory(obs):
-    # for d in obs:
-    index = 0
-    while True:
-        cv2.imshow("image", obs["rgb_static"][index][:, :, ::-1])
-        key = cv2.waitKey(0)
-        if key == ord("q"):
-            break
-        elif key == 83:  # Right arrow
-            index = (index + 1) % len(obs["rgb_static"])
-        elif key == 81:  # Left arrow
-            index = (len(obs["rgb_static"]) + index - 1) % len(obs["rgb_static"])
-        else:
-            print(f'Unrecognized keycode "{key}"')
-        if index % len(obs["rgb_static"]) == 0:
-            print("End of dataset reached")
-            break
-    cv2.destroyAllWindows()
-    return
 
 def preprocess_obs(obs):
     # convert everything to numpy arrays
