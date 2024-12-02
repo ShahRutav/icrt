@@ -27,6 +27,7 @@ class CustomConcatDataset(torch.utils.data.ConcatDataset):
             dataset.shuffle_dataset(seed=seed)
         # after shuffling, the dataset size might change.
         self.cumulative_sizes = self.cumsum(self.datasets)
+        self.balanced_sampling_weights = self.weights_for_balanced_classes()
         return
     def weights_for_balanced_classes(self):
         """
