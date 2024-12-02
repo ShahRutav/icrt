@@ -25,6 +25,8 @@ class CustomConcatDataset(torch.utils.data.ConcatDataset):
         """
         for dataset in self.datasets:
             dataset.shuffle_dataset(seed=seed)
+        # after shuffling, the dataset size might change.
+        self.cumulative_sizes = self.cumsum(self.datasets)
         return
     def weights_for_balanced_classes(self):
         """
@@ -482,15 +484,15 @@ class SequenceDataset(torch.utils.data.Dataset):
 
         if self.start_from_beginning:
             self.usable_indices = [idx for v in verb_to_idx.values() for idx in v if self.steps[idx]["start"]]
+            total_faults = 0
+            for ind in self.usable_indices:
+                if not self.steps[ind]["start"]:
+                    total_faults += 1
+                    print(f"Warning: start is not set to True at index {ind} from episode {self.steps[ind]['episode_id']}")
+            print(f"Total faults: {total_faults}")
         else:
             self.usable_indices = [idx for v in verb_to_idx.values() for idx in v]
 
-        total_faults = 0
-        for ind in self.usable_indices:
-            if not self.steps[ind]["start"]:
-                total_faults += 1
-                print(f"Warning: start is not set to True at index {ind} from episode {self.steps[ind]['episode_id']}")
-        print(f"Total faults: {total_faults}")
 
 
     def __len__(self):
@@ -534,7 +536,21 @@ class SequenceDataset(torch.utils.data.Dataset):
 
         if (self.sort_by_lang and self.task_barrier) or self.goal_conditioned:
             # use self.usable_indices to map index to a subsequence that only contains one task
+            # try:
+            if index >= len(self.usable_indices):
+                print("ERROR!!")
+                print("index sampled: ", index)
+                print("len(usable_indices):", len(self.usable_indices))
+                print("dataset length: ", len(self))
+                index = index - 1 # hack
             index = self.usable_indices[index]
+            # except:
+            #     print("index sampled: ", index)
+            #     print("len(usable_indices):", len(self.usable_indices))
+            #     print("dataset length: ", len(self))
+            #     index = index - 1 # hack?
+            #     index = self.usable_indices[index]
+
 
         subseq = self.steps[index : index + self.seq_length + self.num_pred_steps - 1]
         # total_episode_ids = set([s["episode_id"].split('_')[-1] for s in self.steps])

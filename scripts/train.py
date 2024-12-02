@@ -128,7 +128,8 @@ def main(args : ExperimentConfig):
     # for resume, we need to instantiate new samplers
     resume_reload = args.shared_cfg.resume is not None
     if args.trainer_cfg.compile_model:
-        model = torch.compile(model, fullgraph=True, mode='reduce-overhead')
+        model = torch.compile(model)
+        # model = torch.compile(model, fullgraph=True, mode='reduce-overhead')
         # model = torch.compile(model, fullgraph=True, mode='max-autotune')
 
     for epoch in range(args.shared_cfg.start_epoch, args.trainer_cfg.epochs):
@@ -147,7 +148,7 @@ def main(args : ExperimentConfig):
             if train_weights is not None:
                 print("Using distributed weighted sub epoch sampler for training")
                 sampler_train = misc.DistributedWeightedSubEpochSampler(
-                    dataset_train, num_replicas=num_tasks, rank=global_rank, split_epoch=args.shared_cfg.split_epoch, shuffle=True
+                    dataset_train, num_replicas=num_tasks, rank=global_rank, split_epoch=args.shared_cfg.split_epoch, shuffle=True, weights=train_weights
                 )
             else:
                 sampler_train = misc.DistributedSubEpochSampler(
@@ -156,7 +157,7 @@ def main(args : ExperimentConfig):
             if val_weights is not None:
                 print("Using distributed weighted sub epoch sampler for val")
                 sampler_val = misc.DistributedWeightedSubEpochSampler(
-                    dataset_val, num_replicas=num_tasks, rank=global_rank, split_epoch=args.shared_cfg.split_epoch, shuffle=False
+                    dataset_val, num_replicas=num_tasks, rank=global_rank, split_epoch=args.shared_cfg.split_epoch, shuffle=False, weights=val_weights
                 )
             else:
                 sampler_val = misc.DistributedSubEpochSampler(
@@ -195,6 +196,8 @@ def main(args : ExperimentConfig):
             data_loader_train.sampler.set_epoch(epoch)
             if data_loader_val is not None:
                 data_loader_val.sampler.set_epoch(epoch)
+
+
 
         train_stats = train_one_epoch(
             model, data_loader_train,

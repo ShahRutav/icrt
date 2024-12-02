@@ -18,7 +18,7 @@ import timm
 from timm.data.loader import MultiEpochsDataLoader
 
 from icrt.data import load_datasets
-from icrt.data.dataset import SequenceDataset, PlayDataset
+from icrt.data.dataset import SequenceDataset, PlayDataset, CustomConcatDataset
 
 import icrt.util.misc as misc
 from icrt.util.misc import NativeScalerWithGradNormCount as NativeScaler
@@ -28,12 +28,20 @@ from icrt.util.model_constructor import model_constructor
 
 def verify_dataloading(dataset, args):
     epoch = 1
-    # dataset.shuffle_dataset(epoch)
+    dataset.shuffle_dataset(1)
     num_tasks = misc.get_world_size()
     global_rank = misc.get_rank()
-    sampler_train = misc.DistributedSubEpochSampler(
-        dataset, num_replicas=num_tasks, rank=global_rank, split_epoch=args.shared_cfg.split_epoch, shuffle=True
-    )
+    weights=None
+    if isinstance(dataset, CustomConcatDataset):
+        weights = dataset.balanced_sampling_weights
+    if weights is not None:
+        sampler_train = misc.DistributedWeightedSubEpochSampler(
+            dataset, num_replicas=num_tasks, rank=global_rank, split_epoch=args.shared_cfg.split_epoch, shuffle=True
+        )
+    else:
+        sampler_train = misc.DistributedSubEpochSampler(
+            dataset, num_replicas=num_tasks, rank=global_rank, split_epoch=args.shared_cfg.split_epoch, shuffle=True
+        )
     print("Sampler = %s" % str(sampler_train))
     print("length of sampler: ", len(sampler_train))
     data_loader_train = MultiEpochsDataLoader(
@@ -41,7 +49,7 @@ def verify_dataloading(dataset, args):
         batch_size=args.shared_cfg.batch_size,
         num_workers=args.trainer_cfg.num_workers // misc.get_world_size(),
         pin_memory=args.trainer_cfg.pin_memory,
-        drop_last=True,
+        drop_last=False,
         # persistent_workers=True if (args.trainer_cfg.num_workers // misc.get_world_size()) > 1 else False,
     )
     print("Done loading train dataloader")
@@ -128,9 +136,16 @@ def main(args : ExperimentConfig):
 
     dataset_train, dataset_val = load_datasets(args, vision_transform, no_aug_vision_transform)
 
+    # print("Reverse dataset loading")
+    # # data = dataset_train[-1]
+    # for index in range(len(dataset_train)-1, 0, -1):
+    #     print(index)
+    #     data = dataset_train[index]
+
     # reverse the order of the dataset
-    # for data in reversed(dataset_train):
-        # a = 2
+    # for data in dataset_train:
+    #     a = 2
+    #     print(data)
         # data: observation, proprio, action, prompt_mask, weight_mask
         # data['observation']: (512, 2, 3, 224, 224): (seq_length, num_cameras, C, H, W)
         # data['proprio']: (512, 16, 10): (seq_length, timesteps, proprio_dim)
@@ -142,8 +157,9 @@ def main(args : ExperimentConfig):
     #     # import ipdb; ipdb.set_trace()
     #     a = 2
     # verify_dataset_paths(dataset_train)
-    verify_dataset_paths(dataset_val)
-    # verify_dataloading(dataset_val, args)
+    # verify_dataset_paths(dataset_val)
+    print("self.cumulative_sizes: ", dataset_train.cumulative_sizes)
+    verify_dataloading(dataset_train, args)
 
 if __name__ == '__main__':
     # 420006 led to the error at 420499
